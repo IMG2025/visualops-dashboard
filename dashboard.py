@@ -1,84 +1,81 @@
-# dashboard.py
+import os
 import streamlit as st
 import pandas as pd
-import os
-from utils import load_all_data
+import json
+from datetime import datetime
 
-st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
+EXPORT_PATH = "toast_exports"
+LOCATIONS = sorted(os.listdir(EXPORT_PATH))
+
+def get_available_dates(location):
+    location_path = os.path.join(EXPORT_PATH, location)
+    if not os.path.isdir(location_path):
+        return []
+    return sorted(os.listdir(location_path), reverse=True)
+
+def load_csv_safe(filepath):
+    try:
+        df = pd.read_csv(filepath)
+        if df.empty:
+            raise ValueError("Empty DataFrame")
+        return df
+    except Exception as e:
+        st.warning(f"❌ Failed to load {os.path.basename(filepath)}: {e}")
+        return pd.DataFrame()
+
+def load_json_safe(filepath):
+    try:
+        with open(filepath, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        st.warning(f"❌ Failed to load {os.path.basename(filepath)}: {e}")
+        return {}
+
 st.title("📊 VisualOps: Multi-Location Toast Dashboard")
 
-EXPORT_BASE = "toast_exports"
+location = st.selectbox("📍 Select Location", LOCATIONS)
+dates = get_available_dates(location)
+selected_date = st.selectbox("📅 Select Date", dates)
 
-# --- Sidebar Filters ---
-locations = sorted([loc for loc in os.listdir(EXPORT_BASE) if os.path.isdir(os.path.join(EXPORT_BASE, loc))])
-location = st.sidebar.selectbox("📍 Select Location", locations)
+data_path = os.path.join(EXPORT_PATH, location, selected_date)
+st.markdown(f"**Data Path:** `{data_path}`")
 
-date_path = os.path.join(EXPORT_BASE, location)
-dates = sorted([d for d in os.listdir(date_path) if os.path.isdir(os.path.join(date_path, d))], reverse=True)
-date = st.sidebar.selectbox("📅 Select Date", dates)
+# List all available files
+available_files = os.listdir(data_path)
+st.markdown(f"📂 **Files Found:** `{available_files}`")
 
-DATA_PATH = os.path.join(EXPORT_BASE, location, date)
-st.markdown(f"📁 **Data Path:** `{DATA_PATH}`")
+# Load files safely
+all_items = load_csv_safe(os.path.join(data_path, "AllItemsReport.csv"))
+check_details = load_csv_safe(os.path.join(data_path, "CheckDetails.csv"))
+time_entries = load_csv_safe(os.path.join(data_path, "TimeEntries.csv"))
+kitchen_timings = load_csv_safe(os.path.join(data_path, "KitchenTimings.csv"))
+payment_details = load_csv_safe(os.path.join(data_path, "PaymentDetails.csv"))
+cash_entries = load_csv_safe(os.path.join(data_path, "CashEntries.csv"))
+order_details = load_csv_safe(os.path.join(data_path, "OrderDetails.csv"))
+item_selection = load_csv_safe(os.path.join(data_path, "ItemSelectionDetails.csv"))
+modifiers = load_csv_safe(os.path.join(data_path, "ModifiersSelectionDetails.csv"))
+accounting_report = load_csv_safe(os.path.join(data_path, "AccountingReport.xls"))
 
-files = os.listdir(DATA_PATH)
-st.markdown(f"📄 **{len(files)} files found:** `{files}`")
+menu_export = load_json_safe(os.path.join(data_path, "MenuExport.json"))
+menu_export_v2 = load_json_safe(os.path.join(data_path, "MenuExportV2.json"))
 
-# --- Load Data ---
-data = load_all_data(location, date)
-
-if not data or not isinstance(data, dict):
+if all_items.empty and check_details.empty and item_selection.empty:
     st.error("❌ No valid data could be loaded for this location/date.")
-    st.stop()
-
-# --- Summary Metrics ---
-st.subheader("📈 Summary Metrics")
-
-items = data.get("AllItemsReport")
-checks = data.get("CheckDetails")
-labor = data.get("TimeEntries")
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric("💰 Revenue", f"${items['Net Amount'].sum():,.2f}" if items is not None and "Net Amount" in items else "N/A")
-col2.metric("🧾 Checks", str(len(checks)) if checks is not None else "N/A")
-col3.metric("👥 Employees", labor['Employee'].nunique() if labor is not None and "Employee" in labor else "N/A")
-
-# --- Top Menu Items ---
-st.subheader("🍽️ Top Menu Items")
-required_columns = ["Menu Item", "Item Qty", "Gross Amount", "Discount Amount", "Net Amount"]
-
-if items is not None and all(col in items.columns for col in required_columns):
-    top_items = items[required_columns]
-    st.dataframe(top_items.sort_values(by="Net Amount", ascending=False).head(15))
 else:
-    st.warning("⚠️ Expected columns missing in AllItemsReport.csv")
+    if not all_items.empty:
+        st.subheader("🍽️ Top Menu Items")
+        item_summary = all_items['Item Name'].value_counts().reset_index()
+        item_summary.columns = ['Item', 'Count']
+        st.table(item_summary.head(10))
 
-# --- Item Selection Details ---
-selection = data.get("ItemSelectionDetails")
-if selection is not None and "Menu Item" in selection.columns:
-    st.subheader("📦 Item Selections")
-    st.dataframe(selection[["Menu Item"]].value_counts().reset_index(name="Count").head(10))
+    if not kitchen_timings.empty:
+        st.subheader("⏱️ Kitchen Fulfillment Times")
+        avg_time = kitchen_timings['Fulfillment Time'].mean()
+        st.write(f"**Average Fulfillment Time:** {round(avg_time, 2)} minutes")
+        st.dataframe(kitchen_timings)
 
-# --- Kitchen Timings ---
-kitchen = data.get("KitchenTimings")
-if kitchen is not None and "Fulfillment Time" in kitchen.columns:
-    st.subheader("⏱️ Kitchen Fulfillment Times")
-    kitchen["Fulfillment Time"] = pd.to_numeric(kitchen["Fulfillment Time"], errors="coerce")
-    kitchen_filtered = kitchen.dropna(subset=["Fulfillment Time"])
-    avg_time = kitchen_filtered["Fulfillment Time"].mean()
-    st.write(f"⏳ **Average Fulfillment Time:** `{avg_time:.2f} minutes`")
-    st.dataframe(kitchen_filtered[["Check #", "Station", "Fulfillment Time"]].head(10))
-else:
-    st.info("ℹ️ No kitchen fulfillment time data available.")
-
-# --- Labor Breakdown ---
-if labor is not None and "Job Title" in labor.columns and "Total Pay" in labor.columns:
-    st.subheader("👷 Labor Breakdown by Role")
-    labor_summary = labor.groupby("Job Title")["Total Pay"].sum().reset_index().sort_values(by="Total Pay", ascending=False)
-    st.dataframe(labor_summary)
-else:
-    st.info("ℹ️ Labor data is incomplete or missing expected columns.")
-
-# --- Export Option ---
-if items is not None:
-    st.sidebar.download_button("⬇️ Export 'All Items' CSV", data=items.to_csv(index=False), file_name="AllItems.csv")
+    if not time_entries.empty:
+        st.subheader("👷 Labor Breakdown by Role")
+        if 'Job Title' in time_entries.columns and 'Total Pay' in time_entries.columns:
+            labor_summary = time_entries.groupby("Job Title")["Total Pay"].sum().reset_index()
+            st.dataframe(labor_summary)
