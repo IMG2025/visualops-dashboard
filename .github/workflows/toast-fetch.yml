@@ -1,0 +1,35 @@
+name: 🍞 Toast Data Fetch
+
+on:
+  schedule:
+    - cron: "0 10 * * *"  # 6 AM ET / 10 AM UTC daily
+  workflow_dispatch:
+
+jobs:
+  fetch_toast_data:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout repo
+      uses: actions/checkout@v3
+
+    - name: 🛠 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.9"
+
+    - name: 📦 Install dependencies
+      run: |
+        pip install -r requirements.txt || pip install pandas python-dotenv paramiko
+
+    - name: 🔐 Decode private key
+      run: |
+        echo "${{ secrets.TOAST_SFTP_PRIVATE_KEY_B64 }}" | base64 --decode > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+
+    - name: 🚀 Run signalfetch.py
+      env:
+        TOAST_SFTP_USERNAME: PaulFrenchBakeryDataExports
+        TOAST_SFTP_HOST: s-9b0f88558b264dfda.server.transfer.us-east-1.amazonaws.com
+      run: |
+        python3 signalfetch.py
