@@ -1,32 +1,34 @@
 import os
 import pandas as pd
+import json
 
-def load_csv_if_exists(path):
-    if os.path.exists(path):
-        try:
-            return pd.read_csv(path)
-        except Exception as e:
-            print(f"⚠️ Error loading {path}: {e}")
-    return pd.DataFrame()
+def load_all_data(base_dir):
+    data = {}
 
-def load_json_if_exists(path):
-    if os.path.exists(path):
-        try:
-            return pd.read_json(path)
-        except Exception as e:
-            print(f"⚠️ Error loading {path}: {e}")
-    return {}
+    for location in os.listdir(base_dir):
+        location_path = os.path.join(base_dir, location)
+        if not os.path.isdir(location_path):
+            continue
 
-def load_all_data(location, date):
-    base_path = f"./toast_exports/{location}/{date}"
-    data = {
-        "AllItemsReport": load_csv_if_exists(os.path.join(base_path, "AllItemsReport.csv")),
-        "CheckDetails": load_csv_if_exists(os.path.join(base_path, "CheckDetails.csv")),
-        "ItemSelectionDetails": load_csv_if_exists(os.path.join(base_path, "ItemSelectionDetails.csv")),
-        "KitchenTimings": load_csv_if_exists(os.path.join(base_path, "KitchenTimings.csv")),
-        "MenuExport": load_json_if_exists(os.path.join(base_path, "MenuExport.json")),
-        "ModifiersSelectionDetails": load_csv_if_exists(os.path.join(base_path, "ModifiersSelectionDetails.csv")),
-        "OrderDetails": load_csv_if_exists(os.path.join(base_path, "OrderDetails.csv")),
-        "TimeEntries": load_csv_if_exists(os.path.join(base_path, "TimeEntries.csv")),
-    }
+        data[location] = {}
+
+        for date in os.listdir(location_path):
+            date_path = os.path.join(location_path, date)
+            if not os.path.isdir(date_path):
+                continue
+
+            data[location][date] = {}
+            for filename in os.listdir(date_path):
+                file_path = os.path.join(date_path, filename)
+                try:
+                    if filename.endswith(".csv"):
+                        df = pd.read_csv(file_path)
+                        data[location][date][filename] = df
+                    elif filename.endswith(".json"):
+                        with open(file_path) as f:
+                            data[location][date][filename] = json.load(f)
+                except Exception as e:
+                    print(f"Error loading {file_path}: {e}")
+                    continue
+
     return data
