@@ -50,30 +50,38 @@ orders = data.get("OrderDetails")
 
 # --- Summary Metrics ---
 col1, col2, col3 = st.columns(3)
-col1.metric("💰 Total Revenue", f"${items['Net Amount'].sum():,.2f}" if items is not None else "N/A")
+col1.metric("💰 Total Revenue", f"${items['Net Amount'].sum():,.2f}" if items is not None and "Net Amount" in items else "N/A")
 col2.metric("🧾 Checks", len(checks) if checks is not None else "N/A")
-col3.metric("👥 Employees", labor['Employee'].nunique() if labor is not None else "N/A")
+col3.metric("👥 Employees", labor['Employee'].nunique() if labor is not None and "Employee" in labor else "N/A")
 
 # --- Top Menu Items ---
+required_cols = ["Menu Item", "Item Qty", "Gross Amount", "Discount Amount", "Net Amount"]
 if items is not None:
-    st.subheader("🍽️ Top Selling Items")
-    top_items = items[["Menu Item", "Item Qty", "Gross Amount", "Discount Amount", "Net Amount"]]
-    st.dataframe(top_items.sort_values(by="Net Amount", ascending=False).head(20))
+    if all(col in items.columns for col in required_cols):
+        st.subheader("🍽️ Top Selling Items")
+        top_items = items[required_cols]
+        st.dataframe(top_items.sort_values(by="Net Amount", ascending=False).head(20))
+    else:
+        st.warning(f"⚠️ Missing one or more expected columns in AllItemsReport: {required_cols}")
 
 # --- Kitchen Timings ---
-if kitchen is not None and "Fulfillment Time" in kitchen:
+if kitchen is not None and "Fulfillment Time" in kitchen.columns:
     st.subheader("⏱️ Kitchen Fulfillment Times")
     kitchen_filtered = kitchen.dropna(subset=["Fulfillment Time"])
     kitchen_filtered["Fulfillment Time"] = pd.to_numeric(kitchen_filtered["Fulfillment Time"], errors="coerce")
     avg_time = kitchen_filtered["Fulfillment Time"].mean()
     st.write(f"Average Fulfillment Time: {avg_time:.2f} minutes")
     st.dataframe(kitchen_filtered[["Check #", "Station", "Fulfillment Time"]].head(15))
+else:
+    st.info("ℹ️ No kitchen fulfillment time data available.")
 
 # --- Labor Summary ---
-if labor is not None:
+if labor is not None and "Job Title" in labor.columns and "Total Pay" in labor.columns:
     st.subheader("🧑‍🍳 Labor Summary by Role")
     summary = labor.groupby("Job Title")["Total Pay"].sum().reset_index().sort_values(by="Total Pay", ascending=False)
     st.dataframe(summary)
+else:
+    st.info("ℹ️ Labor data is incomplete or missing expected columns.")
 
 # --- Export Option ---
 if items is not None:
