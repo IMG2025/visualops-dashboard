@@ -22,6 +22,7 @@ if not available_dates:
     st.stop()
 
 date = st.sidebar.selectbox("Select Date", available_dates)
+DATA_DIR = os.path.join(export_base, location, date)
 data = load_all_data(DATA_DIR)
 
 if not data:
