@@ -2,27 +2,29 @@ import os
 import pandas as pd
 import json
 
-def load_all_data(date_path):
+def load_all_data(location, date, base_dir="toast_exports"):
     """
-    Loads all supported files from a given location/date path.
-    Returns a flat dictionary like: {'AllItemsReport': DataFrame, 'MenuExport': dict}
+    Load all files for a given location and date.
+    Returns: dict of filename => DataFrame or JSON
     """
     data = {}
-    if not os.path.exists(date_path):
-        return data
+    folder_path = os.path.join(base_dir, location, date)
 
-    for file in os.listdir(date_path):
-        file_path = os.path.join(date_path, file)
+    if not os.path.isdir(folder_path):
+        return {}
+
+    for file in os.listdir(folder_path):
+        path = os.path.join(folder_path, file)
         key = os.path.splitext(file)[0]
-
         try:
             if file.endswith(".csv"):
-                data[key] = pd.read_csv(file_path)
+                df = pd.read_csv(path)
+                data[key] = df
             elif file.endswith(".json"):
-                with open(file_path) as f:
+                with open(path, "r") as f:
                     data[key] = json.load(f)
         except Exception as e:
-            print(f"❌ Failed to load {file_path}: {e}")
+            print(f"❌ Failed to load {file}: {e}")
             continue
 
     return data
