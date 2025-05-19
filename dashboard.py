@@ -2,182 +2,120 @@ import streamlit as st
 import pandas as pd
 import os
 import json
-import warnings
+import glob
 
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
 st.title("📊 VisualOps: Multi-Location Toast Dashboard")
 
-# === UI Selections ===
+# User selections
 location = st.selectbox("📍 Select Location", options=["57130", "57138"])
-date = st.selectbox("📅 Select Date", options=sorted([
-    d for d in os.listdir(f"toast_exports/{location}") if os.path.isdir(f"toast_exports/{location}/{d}")
-]))
+date_path = f"toast_exports/{location}"
+if not os.path.exists(date_path):
+    st.error(f"No data found for location {location}.")
+    st.stop()
 
-data_path = f"toast_exports/{location}/{date}"
+available_dates = sorted([d for d in os.listdir(date_path) if os.path.isdir(f"{date_path}/{d}")])
+date = st.selectbox("📅 Select Date", options=available_dates)
+
+data_path = f"{date_path}/{date}"
 st.markdown(f"**Data Path:** `{data_path}`")
 
-# === File List ===
+# Show file list
 try:
     files_found = os.listdir(data_path)
     st.markdown("📁 **Files Found:**")
     st.code(files_found)
 except Exception as e:
-    st.error(f"Failed to read directory: {e}")
+    st.error(f"❌ Failed to list files in directory: {e}")
     st.stop()
 
-# === Loaders ===
-def load_csv(file, critical_cols=None):
+# Loaders
+def load_csv(filepath):
     try:
-        df = pd.read_csv(file)
+        df = pd.read_csv(filepath)
         if df.empty or len(df.columns) == 0:
-            st.warning(f"⚠️ Could not load {os.path.basename(file)}: No columns to parse from file")
-            return None
-        if critical_cols:
-            for col in critical_cols:
-                if not any(col.lower() == c.lower() for c in df.columns):
-                    st.error(f"🔴 Missing critical column '{col}' in {os.path.basename(file)}")
+            raise ValueError("No columns to parse from file")
         return df
     except Exception as e:
-        st.warning(f"⚠️ Could not load {os.path.basename(file)}: {e}")
+        st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
         return None
 
-def load_json(file):
+def load_json(filepath):
     try:
-        with open(file, "r") as f:
+        with open(filepath, "r") as f:
             return json.load(f)
     except Exception as e:
-        st.warning(f"⚠️ Could not load {os.path.basename(file)}: {e}")
+        st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
         return None
 
-def load_excel(file):
+def load_excel(filepath):
     try:
-        return pd.read_excel(file, engine="openpyxl")
+        return pd.read_excel(filepath, engine="openpyxl")
     except Exception as e:
-        st.warning(f"⚠️ Could not load {os.path.basename(file)}: {e}")
+        st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
         return None
 
-def get_col(df, name):
-    """Fuzzy column match"""
-    for col in df.columns:
-        if name.lower() in col.lower():
-            return col
-    return None
+def verify_columns(df, required, name):
+    if df is None:
+        return False
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        for m in missing:
+            st.error(f"🔴 Missing critical column '{m}' in {name}")
+        return False
+    return True
 
-# === Top Menu Items ===
+# --- Dashboard Sections ---
+
+# Top Menu Items (ItemSelectionDetails.csv)
 item_path = os.path.join(data_path, "ItemSelectionDetails.csv")
-item_df = load_csv(item_path, ["Menu Item", "Qty", "Net Price"])
-if item_df is not None:
-    col_item = get_col(item_df, "Menu Item")
-    col_qty = get_col(item_df, "Qty")
-    col_net = get_col(item_df, "Net Price")
-    if col_item and col_qty and col_net:
-        menu_summary = (
-            item_df.groupby(col_item)
-            .agg(**{
-                "Quantity Sold": (col_qty, "sum"),
-                "Total Sales": (col_net, "sum")
-            })
-            .sort_values("Total Sales", ascending=False)
-            .reset_index()
-        )
-        st.subheader("🍽️ Top Menu Items")
-        st.dataframe(menu_summary)
-    else:
-        st.error("Missing one or more critical columns in ItemSelectionDetails.csv.")
+item_df = load_csv(item_path)
+if verify_columns(item_df, ["Menu Item", "Qty", "Net Price"], "ItemSelectionDetails.csv"):
+    top_items = item_df.groupby("Menu Item").agg({
+        "Qty": "sum",
+        "Net Price": "sum"
+    }).reset_index().rename(columns={"Qty": "Quantity Sold", "Net Price": "Total Sales"})
+    top_items = top_items.sort_values(by="Quantity Sold", ascending=False)
+    st.subheader("🍽️ Top Menu Items")
+    st.dataframe(top_items)
 
-# === Sales Summary (CheckDetails) ===
+# Sales Summary (CheckDetails.csv)
 check_path = os.path.join(data_path, "CheckDetails.csv")
-check_df = load_csv(check_path, ["Total", "Tax", "Discount"])
-if check_df is not None:
-    col_total = get_col(check_df, "Total")
-    col_tax = get_col(check_df, "Tax")
-    col_discount = get_col(check_df, "Discount")
-    if col_total and col_tax and col_discount:
-        st.subheader("🧾 Sales Summary (from CheckDetails)")
-        st.metric("Total Sales", f"${check_df[col_total].sum():,.2f}")
-        st.metric("Total Tax", f"${check_df[col_tax].sum():,.2f}")
-        st.metric("Total Discount", f"${check_df[col_discount].sum():,.2f}")
-    else:
-        st.warning("Some expected columns are missing in CheckDetails.csv")
+check_df = load_csv(check_path)
+if check_df is not None and all(col in check_df.columns for col in ["Total", "Tax", "Discount"]):
+    st.subheader("💵 Sales Summary (from CheckDetails)")
+    st.metric("Total Sales", f"${check_df['Total'].sum():,.2f}")
+    st.metric("Total Tax", f"${check_df['Tax'].sum():,.2f}")
+    st.metric("Total Discount", f"${check_df['Discount'].sum():,.2f}")
+elif check_df is not None:
+    st.warning("⚠️ Some expected columns are missing in CheckDetails.csv")
 
-# === Order Details ===
+# Order Details Summary
 order_path = os.path.join(data_path, "OrderDetails.csv")
-order_df = load_csv(order_path, ["Tender"])
+order_df = load_csv(order_path)
 if order_df is not None:
-    tender_col = get_col(order_df, "Tender")
-    if tender_col:
-        st.subheader("📦 Order Details Summary")
-        tender_summary = order_df[tender_col].value_counts().reset_index()
-        tender_summary.columns = ["Tender", "Count"]
-        st.dataframe(tender_summary)
+    if "Tender" not in order_df.columns:
+        st.error("🔴 Missing critical column 'Tender' in OrderDetails.csv")
     else:
-        st.warning("No 'Tender' column found in OrderDetails.csv")
+        tender_summary = order_df["Tender"].value_counts().reset_index()
+        tender_summary.columns = ["Tender Type", "Count"]
+        st.subheader("📦 Order Tenders Summary")
+        st.dataframe(tender_summary)
 
-# === Payments Breakdown ===
-pay_path = os.path.join(data_path, "PaymentDetails.csv")
-pay_df = load_csv(pay_path, ["Type", "Amount", "Tip", "Gratuity"])
-if pay_df is not None:
-    col_type = get_col(pay_df, "Type")
-    col_amt = get_col(pay_df, "Amount")
-    col_tip = get_col(pay_df, "Tip")
-    col_grat = get_col(pay_df, "Gratuity")
-    if col_type and col_amt:
-        st.subheader("💳 Payment Breakdown")
-        payment_summary = (
-            pay_df.groupby(col_type)
-            .agg({
-                col_amt: "sum",
-                col_tip: "sum" if col_tip else lambda x: 0,
-                col_grat: "sum" if col_grat else lambda x: 0
-            })
-            .rename(columns={
-                col_amt: "Amount",
-                col_tip: "Tips",
-                col_grat: "Gratuity"
-            })
-            .reset_index()
-        )
-        st.dataframe(payment_summary)
-
-# === Cash Activity ===
-cash_path = os.path.join(data_path, "CashEntries.csv")
-cash_df = load_csv(cash_path, ["Action", "Amount"])
-if cash_df is not None:
-    action_col = get_col(cash_df, "Action")
-    amt_col = get_col(cash_df, "Amount")
-    if action_col and amt_col:
-        st.subheader("💵 Cash Management Activity")
-        cash_summary = cash_df.groupby(action_col)[amt_col].sum().reset_index()
-        cash_summary.columns = ["Action", "Total Amount"]
-        st.dataframe(cash_summary)
-
-# === Labor Summary ===
+# Labor Summary (TimeEntries.csv)
 labor_path = os.path.join(data_path, "TimeEntries.csv")
-labor_df = load_csv(labor_path, ["Job Title", "Payable Hours", "Total Pay"])
-if labor_df is not None:
-    title_col = get_col(labor_df, "Job Title")
-    hrs_col = get_col(labor_df, "Payable Hours")
-    pay_col = get_col(labor_df, "Total Pay")
-    if title_col and hrs_col and pay_col:
-        st.subheader("👥 Labor Summary")
-        labor_summary = (
-            labor_df.groupby(title_col)
-            .agg({
-                hrs_col: "sum",
-                pay_col: "sum"
-            })
-            .reset_index()
-        )
-        st.dataframe(labor_summary)
+labor_df = load_csv(labor_path)
+if labor_df is not None and all(col in labor_df.columns for col in ["Job Title", "Payable Hours", "Total Pay"]):
+    st.subheader("👥 Labor Summary")
+    labor_summary = labor_df.groupby("Job Title").agg({
+        "Payable Hours": "sum",
+        "Total Pay": "sum"
+    }).reset_index()
+    st.dataframe(labor_summary)
 
-# === Accounting Summary ===
-acct_path = os.path.join(data_path, "AccountingReport.xls")
-acct_df = load_excel(acct_path)
-if acct_df is not None:
-    gl_col = get_col(acct_df, "GL Account")
-    amt_col = get_col(acct_df, "Amount")
-    if gl_col and amt_col:
-        st.subheader("📘 Accounting Summary")
-        accounting_summary = acct_df.groupby(gl_col)[amt_col].sum().reset_index()
-        accounting_summary.columns = ["GL Code", "Amount"]
-        st.dataframe(accounting_summary)
+# Accounting (AccountingReport.xls)
+account_path = os.path.join(data_path, "AccountingReport.xls")
+account_df = load_excel(account_path)
+if account_df is not None:
+    st.subheader("📒 Accounting Summary")
+    st.dataframe(account_df)
