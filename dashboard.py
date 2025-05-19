@@ -22,7 +22,7 @@ if not available_dates:
     st.stop()
 
 date = st.sidebar.selectbox("Select Date", available_dates)
-data = load_all_data(location, date)
+data = load_all_data(DATA_DIR)
 
 if not data:
     st.warning("No data files found for this date/location.")
