@@ -13,7 +13,7 @@ PRIVATE_KEY_B64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
 
 LOCATIONS = ["57130", "57138"]
 EXPORT_PATH = "toast_exports"
-DAYS_BACK = 90  # Number of days to pull per location
+DAYS_BACK = 30  # Number of days to pull per location
 
 TOAST_EXPORTS = [
     "AllItemsReport.csv",
