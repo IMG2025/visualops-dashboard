@@ -22,10 +22,14 @@ jobs:
       run: |
         pip install -r requirements.txt || pip install pandas python-dotenv paramiko
 
-    - name: 🔐 Decode private key
+    - name: 🔐 Set up SSH Key
       run: |
+        mkdir -p ~/.ssh
         echo "${{ secrets.TOAST_SFTP_PRIVATE_KEY_B64 }}" | base64 --decode > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
+
+    - name: 🧾 Add known hosts
+      run: ssh-keyscan ${{ secrets.TOAST_SFTP_HOST }} >> ~/.ssh/known_hosts
 
     - name: 🚀 Run signalfetch.py
       env:
