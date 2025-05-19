@@ -36,6 +36,9 @@ st.write(f"📄 {len(files)} files found: {files}")
 
 # --- Load data ---
 data = load_all_data(data_path)
+# Flatten nested structure if needed
+if isinstance(data, dict) and list(data.values())[0] and isinstance(list(data.values())[0], dict):
+    data = list(data.values())[0]
 
 # --- Helper ---
 def safe_df(name):
