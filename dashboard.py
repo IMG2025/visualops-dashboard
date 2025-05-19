@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
 import os
-import json
 
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
 st.title("📊 VisualOps: Multi-Location Toast Dashboard")
 
-# === Selection Controls ===
+# === User Inputs ===
 location = st.selectbox("📍 Select Location", options=["57130", "57138"])
 date = st.selectbox("📅 Select Date", options=sorted([
     d for d in os.listdir(f"toast_exports/{location}") if os.path.isdir(f"toast_exports/{location}/{d}")
@@ -15,73 +14,63 @@ date = st.selectbox("📅 Select Date", options=sorted([
 data_path = f"toast_exports/{location}/{date}"
 st.markdown(f"**Data Path:** `{data_path}`")
 
-# === File Discovery ===
 try:
     files_found = os.listdir(data_path)
     st.markdown("📁 **Files Found:**")
     st.code(files_found)
 except Exception as e:
-    st.error(f"❌ Failed to read directory: {e}")
+    st.error(f"Failed to list files: {e}")
     st.stop()
 
 # === File Loaders ===
-
-def load_csv(file):
+def load_csv(filename):
     try:
-        df = pd.read_csv(file)
+        df = pd.read_csv(os.path.join(data_path, filename))
         if df.empty or df.columns.size == 0:
-            st.warning(f"⚠️ {os.path.basename(file)}: No columns to parse.")
+            st.warning(f"⚠️ Empty or malformed: {filename}")
             return None
         return df
     except Exception as e:
-        st.warning(f"⚠️ {os.path.basename(file)}: {e}")
+        st.warning(f"⚠️ Could not load {filename}: {e}")
         return None
 
-def load_json(file):
-    try:
-        with open(file, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        st.warning(f"⚠️ {os.path.basename(file)}: {e}")
-        return None
+# === Load Files ===
+items_df = load_csv("ItemSelectionDetails.csv")
+orders_df = load_csv("OrderDetails.csv")
+checks_df = load_csv("CheckDetails.csv")
 
-def load_excel(file):
-    try:
-        return pd.read_excel(file, engine="openpyxl")
-    except Exception as e:
-        st.warning(f"⚠️ {os.path.basename(file)}: {e}")
-        return None
+# === Top Items Summary ===
+if items_df is not None:
+    st.subheader("🍽️ Top Menu Items")
 
-def find_column(df, candidates):
-    for col in df.columns:
-        if any(candidate.lower() in col.lower() for candidate in candidates):
-            return col
-    return None
+    if 'Menu Item' in items_df.columns:
+        top_items = (
+            items_df.groupby("Menu Item")
+            .agg({"Qty": "sum", "Net Price": "sum"})
+            .reset_index()
+            .rename(columns={"Qty": "Quantity Sold", "Net Price": "Total Sales"})
+            .sort_values("Total Sales", ascending=False)
+        )
+        st.dataframe(top_items)
+    else:
+        st.error("🛑 'Menu Item' column not found in ItemSelectionDetails.csv.")
 
-# === Load Key Dataset: ItemSelectionDetails ===
+# === Sales Summary ===
+if checks_df is not None:
+    st.subheader("💳 Sales Summary (from CheckDetails)")
+    summary_cols = ['Amount', 'Tax', 'Tip', 'Gratuity', 'Total']
+    if all(col in checks_df.columns for col in summary_cols):
+        totals = checks_df[summary_cols].sum().to_frame("Total")
+        st.dataframe(totals.T.style.format("${:,.2f}"))
+    else:
+        st.warning("Some expected columns are missing in CheckDetails.csv")
 
-item_file = os.path.join(data_path, "ItemSelectionDetails.csv")
-if not os.path.exists(item_file):
-    st.warning("⚠️ File not found: ItemSelectionDetails.csv")
-else:
-    all_items = load_csv(item_file)
-    if all_items is not None:
-        name_col = find_column(all_items, ["item name", "name", "item"])
-        if name_col:
-            item_summary = all_items[name_col].value_counts().reset_index()
-            item_summary.columns = ["Item", "Count"]
-            st.subheader("🍽️ Top Menu Items")
-            st.dataframe(item_summary)
-        else:
-            st.error("🔴 'Item Name' column not found in ItemSelectionDetails.csv.")
-
-# === Optional: Display logic for other files (only if needed) ===
-# You can uncomment or extend this section later
-
-# order_file = os.path.join(data_path, "OrderDetails.csv")
-# orders = load_csv(order_file)
-# if orders is not None:
-#     st.subheader("🧾 Order Details")
-#     st.dataframe(orders)
-
-# === END ===
+# === Order-Level Details ===
+if orders_df is not None:
+    st.subheader("📦 Order Details Summary")
+    if 'Tender' in orders_df.columns:
+        tenders = orders_df['Tender'].value_counts().reset_index()
+        tenders.columns = ["Tender Type", "Count"]
+        st.dataframe(tenders)
+    else:
+        st.warning("No 'Tender' column found in OrderDetails.csv")
