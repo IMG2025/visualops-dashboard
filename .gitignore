@@ -1,1 +1,4 @@
-
+echo "toast_exports/" >> .gitignore
+git add .gitignore
+git commit -m "🛑 Ignore toast_exports directory"
+git push origin main
