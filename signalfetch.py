@@ -11,10 +11,12 @@ SFTP_HOST = os.getenv("TOAST_SFTP_HOST")
 SFTP_USER = os.getenv("TOAST_SFTP_USERNAME")
 PRIVATE_KEY_B64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
 
-LOCATIONS = ["57130", "57138"]
+# Settings
 EXPORT_PATH = "toast_exports"
-DAYS_BACK = 30  # Number of days to pull per location
+LOCATIONS = ["57130", "57138"]
+DAYS_BACK = 30
 
+# Toast export filenames
 TOAST_EXPORTS = [
     "AllItemsReport.csv",
     "CheckDetails.csv",
@@ -30,9 +32,9 @@ TOAST_EXPORTS = [
     "AccountingReport.xls"
 ]
 
-def generate_date_strings(days_back):
+def generate_recent_dates(days=30):
     today = datetime.today()
-    return [(today - timedelta(days=i)).strftime("%Y%m%d") for i in range(days_back)]
+    return [(today - timedelta(days=i)).strftime("%Y%m%d") for i in range(days)]
 
 def load_private_key():
     try:
@@ -55,10 +57,8 @@ def fetch_exports():
         transport.connect(username=SFTP_USER, pkey=key)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
-        dates = generate_date_strings(DAYS_BACK)
-
         for location in LOCATIONS:
-            for date in dates:
+            for date in generate_recent_dates(DAYS_BACK):
                 remote_base = f"/{location}/{date}"
                 local_dir = os.path.join(EXPORT_PATH, location, date)
                 os.makedirs(local_dir, exist_ok=True)
@@ -69,21 +69,21 @@ def fetch_exports():
                     local_file = os.path.join(local_dir, filename)
 
                     if os.path.exists(local_file):
-                        print(f"✅ Skipped (already exists): {filename}")
+                        print(f"✅ Skipped (exists): {filename}")
                         continue
 
                     try:
                         sftp.get(remote_file, local_file)
                         print(f"✅ Downloaded: {filename}")
                     except Exception as e:
-                        print(f"⚠️  Missing or error: {filename} ({e})")
+                        print(f"⚠️ Missing or failed: {filename} ({e})")
 
         sftp.close()
         transport.close()
-        print("\n🚀 Fetch complete for all locations and past dates.")
+        print("\n🚀 Fetch complete for all recent dates and locations.")
 
     except Exception as e:
-        print(f"❌ Fetch failed: {e}")
+        print(f"❌ SFTP fetch failed: {e}")
 
 if __name__ == "__main__":
     fetch_exports()
