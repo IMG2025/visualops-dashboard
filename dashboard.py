@@ -13,20 +13,32 @@ export_base = "./toast_exports"
 location_path = os.path.join(export_base, location)
 
 if not os.path.exists(location_path):
-    st.error("No data found for selected location.")
+    st.error("❌ No data folder found for selected location.")
     st.stop()
 
 available_dates = sorted(os.listdir(location_path), reverse=True)
 if not available_dates:
-    st.error("No data files found.")
+    st.error("❌ No date folders found in this location.")
     st.stop()
 
 date = st.sidebar.selectbox("Select Date", available_dates)
 DATA_DIR = os.path.join(export_base, location, date)
+
+# --- Pre-load diagnostics ---
+st.write("📂 Checking data path:", DATA_DIR)
+
+if os.path.exists(DATA_DIR):
+    files = os.listdir(DATA_DIR)
+    st.write(f"📄 {len(files)} files found:", files)
+else:
+    st.error(f"❌ Directory does not exist: {DATA_DIR}")
+    st.stop()
+
+# --- Load data ---
 data = load_all_data(DATA_DIR)
 
 if not data:
-    st.warning("No data files found for this date/location.")
+    st.warning("⚠️ No data files could be loaded from this date/location.")
     st.stop()
 
 # --- Load core data ---
@@ -52,7 +64,8 @@ if items is not None:
 if kitchen is not None and "Fulfillment Time" in kitchen:
     st.subheader("⏱️ Kitchen Fulfillment Times")
     kitchen_filtered = kitchen.dropna(subset=["Fulfillment Time"])
-    st.write(f"Average Fulfillment Time: {kitchen_filtered['Fulfillment Time'].mean()}")
+    avg_time = kitchen_filtered["Fulfillment Time"].mean()
+    st.write(f"Average Fulfillment Time: {avg_time:.2f} minutes")
     st.dataframe(kitchen_filtered[["Check #", "Station", "Fulfillment Time"]].head(15))
 
 # --- Labor Summary ---
@@ -63,4 +76,4 @@ if labor is not None:
 
 # --- Export Option ---
 if items is not None:
-    st.sidebar.download_button("Download 'All Items' CSV", data=items.to_csv(index=False), file_name="AllItems.csv")
+    st.sidebar.download_button("⬇️ Download 'All Items' CSV", data=items.to_csv(index=False), file_name="AllItems.csv")
