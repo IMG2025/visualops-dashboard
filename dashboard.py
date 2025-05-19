@@ -1,92 +1,78 @@
 import streamlit as st
-import os
 import pandas as pd
 import json
+import os
 
 st.set_page_config(layout="wide")
-
 st.title("📊 VisualOps: Multi-Location Toast Dashboard")
 
+base_path = "toast_exports"
+
 # Select location
-location = st.selectbox("📍 Select Location", sorted(os.listdir("toast_exports")))
+location_ids = sorted(os.listdir(base_path))
+location = st.selectbox("📍 Select Location", location_ids)
 
 # Select date
-date_path = f"toast_exports/{location}"
-dates = sorted(os.listdir(date_path))
+dates = sorted(os.listdir(os.path.join(base_path, location)))
 date = st.selectbox("📅 Select Date", dates)
 
-# Construct full data path
-data_path = os.path.join("toast_exports", location, date)
+data_path = os.path.join(base_path, location, date)
 st.markdown(f"**Data Path:** `{data_path}`")
 
-# List all available files
-if os.path.exists(data_path):
-    files = os.listdir(data_path)
-    files = [f for f in files if not f.startswith('.') and not f.startswith('._')]
-    st.markdown("📂 **Files Found:**")
-    st.code(files)
-else:
-    st.error("❌ Selected path does not exist.")
-    st.stop()
+files = os.listdir(data_path)
+st.markdown("📁 **Files Found:**")
+st.code(files)
 
-# Helper to safely load files
-def load_csv(file_name):
-    file_path = os.path.join(data_path, file_name)
-    if os.path.exists(file_path):
-        try:
-            df = pd.read_csv(file_path)
-            return df
-        except Exception as e:
-            st.warning(f"⚠️ Could not load {file_name}: {e}")
-    else:
-        st.warning(f"❌ Failed to load {file_name}: File not found.")
-    return pd.DataFrame()
-
-def load_json(file_name):
-    file_path = os.path.join(data_path, file_name)
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            st.warning(f"⚠️ Could not load {file_name}: {e}")
-    else:
-        st.warning(f"❌ Failed to load {file_name}: File not found.")
-    return {}
-
-# Load critical CSVs
-all_items = load_csv("AllItemsReport.csv")
-item_selections = load_csv("ItemSelectionDetails.csv")
-payments = load_csv("PaymentDetails.csv")
-orders = load_csv("OrderDetails.csv")
-modifiers = load_csv("ModifiersSelectionDetails.csv")
-time_entries = load_csv("TimeEntries.csv")
-check_details = load_csv("CheckDetails.csv")
-kitchen = load_csv("KitchenTimings.csv")
-cash_entries = load_csv("CashEntries.csv")
-
-# Load JSON exports
-menu_export = load_json("MenuExport.json")
-menu_export_v2 = load_json("MenuExportV2.json")
-
-# Optional XLS file
-xls_path = os.path.join(data_path, "AccountingReport.xls")
-if os.path.exists(xls_path):
+# Helper: Load CSV safely
+def safe_load_csv(file_path):
     try:
-        accounting = pd.read_excel(xls_path)
+        if os.path.getsize(file_path) == 0:
+            raise ValueError("File is empty")
+        df = pd.read_csv(file_path)
+        if df.empty or len(df.columns) == 0:
+            raise ValueError("No columns to parse from file")
+        return df
     except Exception as e:
-        st.warning(f"⚠️ Could not load AccountingReport.xls: {e}")
-else:
-    accounting = pd.DataFrame()
-    st.warning("❌ Failed to load AccountingReport.xls: File not found.")
+        st.warning(f"⚠️ Could not load {os.path.basename(file_path)}: {e}")
+        return pd.DataFrame()
 
-# Display top items if possible
-st.subheader("🍽️ Top Menu Items")
-if not all_items.empty and 'Item Name' in all_items.columns:
-    item_summary = all_items['Item Name'].value_counts().reset_index()
+# Helper: Load JSON safely
+def safe_load_json(file_path):
+    try:
+        if os.path.getsize(file_path) == 0:
+            raise ValueError("File is empty")
+        with open(file_path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        st.warning(f"⚠️ Could not load {os.path.basename(file_path)}: {e}")
+        return {}
+
+# Load files
+csv_files = [
+    "TimeEntries.csv", "CheckDetails.csv", "KitchenTimings.csv", "AllItemsReport.csv",
+    "PaymentDetails.csv", "CashEntries.csv", "OrderDetails.csv", "ItemSelectionDetails.csv",
+    "ModifiersSelectionDetails.csv"
+]
+
+json_files = ["MenuExport.json", "MenuExportV2.json"]
+
+xls_file = "AccountingReport.xls"
+
+dfs = {file: safe_load_csv(os.path.join(data_path, file)) for file in csv_files}
+jsons = {file: safe_load_json(os.path.join(data_path, file)) for file in json_files}
+
+# Optional Excel loading
+if os.path.exists(os.path.join(data_path, xls_file)):
+    try:
+        dfs["AccountingReport.xls"] = pd.read_excel(os.path.join(data_path, xls_file))
+    except Exception as e:
+        st.warning(f"⚠️ Could not load {xls_file}: {e}")
+
+# Example visualization: Menu Item Summary
+if not dfs["ItemSelectionDetails.csv"].empty:
+    st.header("🍽️ Top Menu Items")
+    item_summary = dfs["ItemSelectionDetails.csv"]['Item Name'].value_counts().reset_index()
     item_summary.columns = ['Item Name', 'Count']
     st.dataframe(item_summary)
 else:
-    st.warning("⚠️ 'Item Name' column missing or AllItemsReport.csv is empty.")
-
-# Add more dashboard sections here as needed...
+    st.info("ℹ️ No item-level data available for this location/date.")
