@@ -2,7 +2,6 @@ import os
 import base64
 import paramiko
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
@@ -31,11 +30,6 @@ TOAST_EXPORTS = [
     "AccountingReport.xls"
 ]
 
-# Utility: get list of last 30 dates in YYYYMMDD format
-def last_n_dates(n=30):
-    today = datetime.utcnow()
-    return [(today - timedelta(days=i)).strftime('%Y%m%d') for i in range(n)]
-
 # Decode private key for SFTP authentication
 def load_private_key():
     try:
@@ -61,20 +55,24 @@ def fetch_exports():
 
         for location in LOCATIONS:
             print(f"\n📍 Scanning location: {location}")
-            for date in last_n_dates():
+            try:
+                remote_dates = sftp.listdir(f"/{location}")
+            except Exception as e:
+                print(f"❌ Failed to list remote folder /{location}: {e}")
+                continue
+
+            for date in sorted(remote_dates, reverse=True):
                 remote_base = f"/{location}/{date}"
                 local_dir = os.path.join(EXPORT_PATH, location, date)
                 os.makedirs(local_dir, exist_ok=True)
 
-                # Check remote folder existence
                 try:
-                    sftp.listdir(remote_base)
-                    print(f"✅ Folder exists: {remote_base}")
-                except FileNotFoundError:
-                    print(f"❌ Folder not found: {remote_base}")
+                    sftp.listdir(remote_base)  # Confirm folder exists
+                    print(f"📦 Fetching files from: {remote_base}")
+                except Exception:
+                    print(f"⚠️  Skipping invalid or inaccessible folder: {remote_base}")
                     continue
 
-                print(f"📦 Fetching files from: {remote_base}")
                 for filename in TOAST_EXPORTS:
                     remote_file = f"{remote_base}/{filename}"
                     local_file = os.path.join(local_dir, filename)
