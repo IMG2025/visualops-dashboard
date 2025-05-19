@@ -1,39 +1,84 @@
-# signalfetch.py
-
 import os
+import base64
 import paramiko
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-USERNAME = os.getenv("TOAST_SFTP_USERNAME")
-HOST = os.getenv("TOAST_SFTP_HOST")
-KEY_PATH = os.path.expanduser(os.getenv("TOAST_SFTP_KEY_PATH"))
-LOCAL_BASE = "toast_exports"
+# Config
+SFTP_HOST = os.getenv("TOAST_SFTP_HOST")
+SFTP_USER = os.getenv("TOAST_SFTP_USERNAME")
+PRIVATE_KEY_B64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
 
-def fetch_exports(location_id, date_str, remote_dir=None):
-    if not remote_dir:
-        remote_dir = f"/{location_id}/{date_str}"
+# Target locations and dates to scan
+LOCATIONS = ["57130", "57138"]
+DATES = ["20250516", "20250517"]  # Add more as needed
+EXPORT_PATH = "toast_exports"
 
-    local_dir = os.path.join(LOCAL_BASE, location_id, date_str)
-    os.makedirs(local_dir, exist_ok=True)
+# Toast export filenames
+TOAST_EXPORTS = [
+    "AllItemsReport.csv",
+    "CheckDetails.csv",
+    "TimeEntries.csv",
+    "KitchenTimings.csv",
+    "ItemSelectionDetails.csv",
+    "ModifiersSelectionDetails.csv",
+    "OrderDetails.csv",
+    "PaymentDetails.csv",
+    "CashEntries.csv",
+    "MenuExport.json",
+    "MenuExportV2.json",
+    "AccountingReport.xls"
+]
 
-    key = paramiko.RSAKey.from_private_key_file(KEY_PATH)
-    transport = paramiko.Transport((HOST, 22))
-    transport.connect(username=USERNAME, pkey=key)
-    sftp = paramiko.SFTPClient.from_transport(transport)
+def load_private_key():
+    try:
+        decoded = base64.b64decode(PRIVATE_KEY_B64.encode())
+        key_file = "/tmp/temp_rsa"
+        with open(key_file, "wb") as f:
+            f.write(decoded)
+        return paramiko.RSAKey.from_private_key_file(key_file)
+    except Exception as e:
+        print(f"❌ Failed to decode private key: {e}")
+        return None
 
-    print(f"📦 Fetching data from {remote_dir} to {local_dir}")
-    for file in sftp.listdir(remote_dir):
-        remote_path = f"{remote_dir}/{file}"
-        local_path = os.path.join(local_dir, file)
-        sftp.get(remote_path, local_path)
-        print(f"✅ Downloaded: {file}")
+def fetch_exports():
+    key = load_private_key()
+    if key is None:
+        return
 
-    sftp.close()
-    transport.close()
-    print("🚀 Sync complete.")
+    try:
+        transport = paramiko.Transport((SFTP_HOST, 22))
+        transport.connect(username=SFTP_USER, pkey=key)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+
+        for location in LOCATIONS:
+            for date in DATES:
+                remote_base = f"/{location}/{date}"
+                local_dir = os.path.join(EXPORT_PATH, location, date)
+                os.makedirs(local_dir, exist_ok=True)
+
+                print(f"\n📦 Fetching: {remote_base}")
+                for filename in TOAST_EXPORTS:
+                    remote_file = f"{remote_base}/{filename}"
+                    local_file = os.path.join(local_dir, filename)
+
+                    if os.path.exists(local_file):
+                        print(f"✅ Skipped (already exists): {filename}")
+                        continue
+
+                    try:
+                        sftp.get(remote_file, local_file)
+                        print(f"✅ Downloaded: {filename}")
+                    except Exception as e:
+                        print(f"⚠️  Missing or error: {filename} ({e})")
+
+        sftp.close()
+        transport.close()
+        print("\n🚀 Fetch complete for all configured locations and dates.")
+
+    except Exception as e:
+        print(f"❌ Fetch failed: {e}")
 
 if __name__ == "__main__":
-    fetch_exports("57130", "20250516")
+    fetch_exports()
