@@ -1,5 +1,4 @@
 import os
-import base64
 import paramiko
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -10,7 +9,6 @@ load_dotenv()
 # SFTP credentials
 SFTP_HOST = os.getenv("TOAST_SFTP_HOST")
 SFTP_USER = os.getenv("TOAST_SFTP_USERNAME")
-PRIVATE_KEY_B64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
 PRIVATE_KEY_PATH = os.getenv("TOAST_SFTP_KEY_PATH")
 
 # Constants
@@ -32,35 +30,13 @@ TOAST_EXPORTS = [
     "AccountingReport.xls"
 ]
 
-# Utility: generate list of past N days (default = 30)
 def last_n_dates(n=30):
     today = datetime.utcnow()
     return [(today - timedelta(days=i)).strftime('%Y%m%d') for i in range(n)]
 
-# Load private key from either B64 or path
-def load_private_key():
-    try:
-        if PRIVATE_KEY_B64:
-            decoded = base64.b64decode(PRIVATE_KEY_B64.encode())
-            key_file = "/tmp/temp_rsa"
-            with open(key_file, "wb") as f:
-                f.write(decoded)
-            return paramiko.RSAKey.from_private_key_file(key_file)
-        elif PRIVATE_KEY_PATH:
-            return paramiko.RSAKey.from_private_key_file(PRIVATE_KEY_PATH)
-        else:
-            raise ValueError("No private key found in environment.")
-    except Exception as e:
-        print(f"❌ Failed to load private key: {e}")
-        return None
-
-# Main fetch routine
 def fetch_exports():
-    key = load_private_key()
-    if key is None:
-        return
-
     try:
+        key = paramiko.RSAKey.from_private_key_file(PRIVATE_KEY_PATH)
         transport = paramiko.Transport((SFTP_HOST, 22))
         transport.connect(username=SFTP_USER, pkey=key)
         sftp = paramiko.SFTPClient.from_transport(transport)
@@ -72,7 +48,6 @@ def fetch_exports():
                 local_dir = os.path.join(EXPORT_PATH, location, date)
                 os.makedirs(local_dir, exist_ok=True)
 
-                # Skip non-existent remote folders
                 try:
                     sftp.listdir(remote_base)
                     print(f"✅ Folder exists: {remote_base}")
@@ -85,13 +60,19 @@ def fetch_exports():
                     remote_file = f"{remote_base}/{filename}"
                     local_file = os.path.join(local_dir, filename)
 
-                    if os.path.exists(local_file):
+                    if os.path.exists(local_file) and os.path.getsize(local_file) > 0:
                         print(f"↩️  Skipped (already exists): {filename}")
                         continue
 
                     try:
-                        sftp.get(remote_file, local_file)
-                        print(f"✅ Downloaded: {filename}")
+                        with sftp.open(remote_file, 'r') as remote_file_obj:
+                            contents = remote_file_obj.read()
+                            if contents:
+                                with open(local_file, 'wb') as f:
+                                    f.write(contents)
+                                print(f"✅ Downloaded: {filename}")
+                            else:
+                                print(f"⚠️  Skipped empty: {filename}")
                     except Exception as e:
                         print(f"⚠️  Missing or error: {filename} ({e})")
 
