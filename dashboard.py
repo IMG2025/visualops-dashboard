@@ -64,6 +64,7 @@ if items is not None:
 if kitchen is not None and "Fulfillment Time" in kitchen:
     st.subheader("⏱️ Kitchen Fulfillment Times")
     kitchen_filtered = kitchen.dropna(subset=["Fulfillment Time"])
+    kitchen_filtered["Fulfillment Time"] = pd.to_numeric(kitchen_filtered["Fulfillment Time"], errors="coerce")
     avg_time = kitchen_filtered["Fulfillment Time"].mean()
     st.write(f"Average Fulfillment Time: {avg_time:.2f} minutes")
     st.dataframe(kitchen_filtered[["Check #", "Station", "Fulfillment Time"]].head(15))
