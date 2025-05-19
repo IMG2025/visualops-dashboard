@@ -2,6 +2,7 @@ import os
 import base64
 import paramiko
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -10,12 +11,10 @@ SFTP_HOST = os.getenv("TOAST_SFTP_HOST")
 SFTP_USER = os.getenv("TOAST_SFTP_USERNAME")
 PRIVATE_KEY_B64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
 
-# Target locations and dates to scan
 LOCATIONS = ["57130", "57138"]
-DATES = ["20250516", "20250517"]  # Add more as needed
 EXPORT_PATH = "toast_exports"
+DAYS_BACK = 90  # Number of days to pull per location
 
-# Toast export filenames
 TOAST_EXPORTS = [
     "AllItemsReport.csv",
     "CheckDetails.csv",
@@ -30,6 +29,10 @@ TOAST_EXPORTS = [
     "MenuExportV2.json",
     "AccountingReport.xls"
 ]
+
+def generate_date_strings(days_back):
+    today = datetime.today()
+    return [(today - timedelta(days=i)).strftime("%Y%m%d") for i in range(days_back)]
 
 def load_private_key():
     try:
@@ -52,8 +55,10 @@ def fetch_exports():
         transport.connect(username=SFTP_USER, pkey=key)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
+        dates = generate_date_strings(DAYS_BACK)
+
         for location in LOCATIONS:
-            for date in DATES:
+            for date in dates:
                 remote_base = f"/{location}/{date}"
                 local_dir = os.path.join(EXPORT_PATH, location, date)
                 os.makedirs(local_dir, exist_ok=True)
@@ -75,7 +80,7 @@ def fetch_exports():
 
         sftp.close()
         transport.close()
-        print("\n🚀 Fetch complete for all configured locations and dates.")
+        print("\n🚀 Fetch complete for all locations and past dates.")
 
     except Exception as e:
         print(f"❌ Fetch failed: {e}")
