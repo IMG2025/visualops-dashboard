@@ -4,13 +4,31 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 # --- CONFIGURATION ---
+from dotenv import load_dotenv
+import os
+import psycopg2
+
+# --- Load environment variables ---
+load_dotenv()
+
 NEON_DB_CONFIG = {
-    "dbname": "your_db",
-    "user": "your_user",
-    "password": "your_password",
-    "host": "your_host",
-    "port": "5432"
+    "dbname": os.environ.get("NEON_DB_NAME"),
+    "user": os.environ.get("NEON_DB_USER"),
+    "password": os.environ.get("NEON_DB_PASSWORD"),
+    "host": os.environ.get("NEON_DB_HOST"),
+    "port": os.environ.get("NEON_DB_PORT", "5432")  # default to 5432 if not set
 }
+
+# Connect to Neon
+conn = psycopg2.connect(**NEON_DB_CONFIG)
+cur = conn.cursor()
+
+# Example test query
+cur.execute("SELECT 1;")
+print("✅ Connected and executed successfully")
+
+cur.close()
+conn.close()
 
 EXPORT_ROOT = "toast_exports"
 TARGET_DATE = "20250516"
