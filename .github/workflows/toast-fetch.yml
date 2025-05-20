@@ -20,7 +20,7 @@ jobs:
 
     - name: 📦 Install dependencies
       run: |
-        pip install -r requirements.txt || pip install pandas python-dotenv psycopg2-binary paramiko
+        pip install -r requirements.txt || pip install pandas python-dotenv psycopg2-binary paramiko requests
 
     - name: 🔐 Set up SSH Key
       run: |
