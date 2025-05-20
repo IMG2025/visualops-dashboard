@@ -31,12 +31,18 @@ jobs:
     - name: 🧾 Add known hosts
       run: ssh-keyscan ${{ secrets.TOAST_SFTP_HOST }} >> ~/.ssh/known_hosts
 
+    - name: 📡 Fetch Toast CSVs via SFTP
+      run: python3 signalfetch.py
+      env:
+        TOAST_SFTP_USER: ${{ secrets.TOAST_SFTP_USER }}
+        TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
+        TOAST_SFTP_DIR: ${{ secrets.TOAST_SFTP_DIR }}
+
     - name: 🧠 Run neon_ingest.py (Ingest into Neon)
+      run: python3 neon_ingest.py
       env:
         NEON_DB_HOST: ${{ secrets.NEON_DB_HOST }}
         NEON_DB_PORT: ${{ secrets.NEON_DB_PORT }}
         NEON_DB_NAME: ${{ secrets.NEON_DB_NAME }}
         NEON_DB_USER: ${{ secrets.NEON_DB_USER }}
         NEON_DB_PASSWORD: ${{ secrets.NEON_DB_PASSWORD }}
-      run: |
-        python3 neon_ingest.py
