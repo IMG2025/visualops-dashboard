@@ -1,27 +1,38 @@
 import os
 from datetime import datetime, timedelta
 
-# === CONFIGURATION ===
 locations = ["57130", "57138"]
-days_back = 10
-base_path = "toast_exports"
+base_path = "/Users/toddmorgan/visualops/toast_exports"
+required_files = [
+    "ItemSelectionDetails.csv",
+    "CheckDetails.csv",
+    "OrderDetails.csv",
+    "TimeEntries.csv"
+]
 
-# === Generate Expected Date List ===
-date_list = [(datetime.today() - timedelta(days=i)).strftime("%Y%m%d") for i in range(days_back)]
+# Generate last 10 days
+today = datetime.today()
+dates = [(today - timedelta(days=i)).strftime("%Y%m%d") for i in range(10)]
 
-# === Scan Results ===
-print("SFTP Audit Report\n" + "="*40)
+print("SFTP Audit Report")
+print("=" * 40)
+
 for loc in locations:
-    loc_path = os.path.join(base_path, loc)
     print(f"📍 Location: {loc}")
-    if not os.path.exists(loc_path):
-        print(f"  ❌ Location folder not found: {loc_path}")
-        continue
+    loc_path = os.path.join(base_path, loc)
 
-    for date in date_list:
+    for date in dates:
         date_path = os.path.join(loc_path, date)
-        if os.path.exists(date_path) and os.path.isdir(date_path):
-            print(f"  ✅ {date} - Found")
+        if not os.path.exists(date_path):
+            print(f"  ❌ {date} - Folder Missing")
         else:
-            print(f"  ❌ {date} - Missing")
+            # Check if required files exist
+            missing = []
+            for req in required_files:
+                if not os.path.exists(os.path.join(date_path, req)):
+                    missing.append(req)
+            if missing:
+                print(f"  ⚠️ {date} - Missing files: {', '.join(missing)}")
+            else:
+                print(f"  ✅ {date} - All required files found")
     print("-" * 40)
