@@ -1,49 +1,47 @@
+
 import streamlit as st
 import pandas as pd
 import os
 import json
-import glob
+from datetime import datetime
 
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
 st.title("📊 VisualOps: Multi-Location Toast Dashboard")
 
-# User selections
-location = st.selectbox("📍 Select Location", options=["57130", "57138"])
-date_path = f"toast_exports/{location}"
-if not os.path.exists(date_path):
-    st.error(f"No data found for location {location}.")
+# --- User Inputs ---
+locations = ["57130", "57138"]
+location_id = st.selectbox("📍 Select Location", options=locations)
+base_path = f"toast_exports/{location_id}"
+
+if not os.path.exists(base_path):
+    st.error(f"❌ No data found for location {location_id}.")
     st.stop()
 
-available_dates = sorted([d for d in os.listdir(date_path) if os.path.isdir(f"{date_path}/{d}")])
-date = st.selectbox("📅 Select Date", options=available_dates)
+available_dates = sorted([d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))])
+if not available_dates:
+    st.error("❌ No dates found for selected location.")
+    st.stop()
 
-data_path = f"{date_path}/{date}"
+selected_date = st.selectbox("📅 Select Date", options=available_dates)
+data_path = f"{base_path}/{selected_date}"
 st.markdown(f"**Data Path:** `{data_path}`")
 
-# Show file list
+# --- File Listing ---
 try:
     files_found = os.listdir(data_path)
     st.markdown("📁 **Files Found:**")
     st.code(files_found)
 except Exception as e:
-    st.error(f"❌ Failed to list files in directory: {e}")
+    st.error(f"❌ Failed to list files: {e}")
     st.stop()
 
-# Loaders
+# --- Utility Loaders ---
 def load_csv(filepath):
     try:
         df = pd.read_csv(filepath)
         if df.empty or len(df.columns) == 0:
-            raise ValueError("No columns to parse from file")
+            raise ValueError("Empty or malformed CSV")
         return df
-    except Exception as e:
-        st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
-        return None
-
-def load_json(filepath):
-    try:
-        with open(filepath, "r") as f:
-            return json.load(f)
     except Exception as e:
         st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
         return None
@@ -55,42 +53,28 @@ def load_excel(filepath):
         st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
         return None
 
-def verify_columns(df, required, name):
-    if df is None:
-        return False
-    missing = [col for col in required if col not in df.columns]
-    if missing:
-        for m in missing:
-            st.error(f"🔴 Missing critical column '{m}' in {name}")
-        return False
-    return True
-
-# --- Dashboard Sections ---
-
-# Top Menu Items (ItemSelectionDetails.csv)
+# --- Top Menu Items ---
 item_path = os.path.join(data_path, "ItemSelectionDetails.csv")
 item_df = load_csv(item_path)
-if verify_columns(item_df, ["Menu Item", "Qty", "Net Price"], "ItemSelectionDetails.csv"):
+if item_df is not None and all(col in item_df.columns for col in ["Menu Item", "Qty", "Net Price"]):
     top_items = item_df.groupby("Menu Item").agg({
         "Qty": "sum",
         "Net Price": "sum"
     }).reset_index().rename(columns={"Qty": "Quantity Sold", "Net Price": "Total Sales"})
-    top_items = top_items.sort_values(by="Quantity Sold", ascending=False)
+    top_items = top_items.sort_values("Quantity Sold", ascending=False)
     st.subheader("🍽️ Top Menu Items")
     st.dataframe(top_items)
 
-# Sales Summary (CheckDetails.csv)
+# --- Sales Summary ---
 check_path = os.path.join(data_path, "CheckDetails.csv")
 check_df = load_csv(check_path)
-if check_df is not None and all(col in check_df.columns for col in ["Total", "Tax", "Discount"]):
-    st.subheader("💵 Sales Summary (from CheckDetails)")
-    st.metric("Total Sales", f"${check_df['Total'].sum():,.2f}")
-    st.metric("Total Tax", f"${check_df['Tax'].sum():,.2f}")
-    st.metric("Total Discount", f"${check_df['Discount'].sum():,.2f}")
-elif check_df is not None:
-    st.warning("⚠️ Some expected columns are missing in CheckDetails.csv")
+if check_df is not None:
+    st.subheader("💰 Sales Summary (from CheckDetails)")
+    st.metric("Total Sales", f"${check_df['Total'].sum():,.2f}" if "Total" in check_df.columns else "N/A")
+    st.metric("Total Tax", f"${check_df['Tax'].sum():,.2f}" if "Tax" in check_df.columns else "N/A")
+    st.metric("Total Discount", f"${check_df['Discount'].sum():,.2f}" if "Discount" in check_df.columns else "N/A")
 
-# Order Details Summary
+# --- Tender Breakdown ---
 order_path = os.path.join(data_path, "OrderDetails.csv")
 order_df = load_csv(order_path)
 if order_df is not None:
@@ -102,7 +86,7 @@ if order_df is not None:
         st.subheader("📦 Order Tenders Summary")
         st.dataframe(tender_summary)
 
-# Labor Summary (TimeEntries.csv)
+# --- Labor Summary ---
 labor_path = os.path.join(data_path, "TimeEntries.csv")
 labor_df = load_csv(labor_path)
 if labor_df is not None and all(col in labor_df.columns for col in ["Job Title", "Payable Hours", "Total Pay"]):
@@ -113,9 +97,10 @@ if labor_df is not None and all(col in labor_df.columns for col in ["Job Title",
     }).reset_index()
     st.dataframe(labor_summary)
 
-# Accounting (AccountingReport.xls)
+# --- Accounting Summary ---
 account_path = os.path.join(data_path, "AccountingReport.xls")
 account_df = load_excel(account_path)
 if account_df is not None:
     st.subheader("📒 Accounting Summary")
     st.dataframe(account_df)
+
