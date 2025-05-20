@@ -31,14 +31,6 @@ jobs:
     - name: 🧾 Add known hosts
       run: ssh-keyscan ${{ secrets.TOAST_SFTP_HOST }} >> ~/.ssh/known_hosts
 
-    - name: 📂 Run signalfetch.py (Download from Toast)
-      env:
-        TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
-        TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
-        TOAST_EXPORT_PATH: ${{ secrets.TOAST_EXPORT_PATH }}
-      run: |
-        python3 signalfetch.py
-
     - name: 🧠 Run neon_ingest.py (Ingest into Neon)
       env:
         NEON_DB_HOST: ${{ secrets.NEON_DB_HOST }}
