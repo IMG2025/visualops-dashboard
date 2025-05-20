@@ -6,10 +6,12 @@ from datetime import datetime, timedelta
 # Load environment variables
 load_dotenv()
 
-# SFTP credentials
+# SFTP credentials (from GitHub secrets or .env)
 SFTP_HOST = os.getenv("TOAST_SFTP_HOST")
 SFTP_USER = os.getenv("TOAST_SFTP_USERNAME")
-PRIVATE_KEY_PATH = os.getenv("TOAST_SFTP_KEY_PATH")
+
+# Use standard GitHub Actions private key path
+PRIVATE_KEY_PATH = os.path.expanduser("~/.ssh/id_rsa")
 
 # Constants
 LOCATIONS = ["57130", "57138"]
