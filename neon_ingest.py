@@ -5,7 +5,8 @@ from psycopg2.extras import execute_values
 import pandas as pd
 
 # --- Load environment variables ---
-load_dotenv()
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path=env_path)
 
 NEON_DB_CONFIG = {
     "dbname": os.environ.get("NEON_DB_NAME"),
@@ -21,6 +22,7 @@ SCHEMA = "visualops_schema"
 
 # --- DB CONNECTION ---
 def get_conn():
+    print(f"🔌 Connecting to {NEON_DB_CONFIG['host']}:{NEON_DB_CONFIG['port']}...")
     return psycopg2.connect(**NEON_DB_CONFIG)
 
 # --- HELPERS ---
@@ -28,7 +30,7 @@ def load_csv(file_path):
     try:
         return pd.read_csv(file_path)
     except Exception as e:
-        print(f"Failed to load {file_path}: {e}")
+        print(f"[ERROR] Failed to load {file_path}: {e}")
         return None
 
 def insert_dataframe(conn, df, table):
@@ -38,15 +40,14 @@ def insert_dataframe(conn, df, table):
 
     columns = [f'"{col}"' for col in df.columns]
     values = df.values.tolist()
-    placeholders = "(" + ",".join(["%s"] * len(columns)) + ")"
     query = f'INSERT INTO {SCHEMA}.{table} ({",".join(columns)}) VALUES %s'
 
     with conn.cursor() as cur:
         try:
             execute_values(cur, query, values)
-            print(f"[OK] Inserted into {table} ({len(values)} rows)")
+            print(f"[OK] Inserted {len(values)} rows into {table}")
         except Exception as e:
-            print(f"[ERR] Failed to insert into {table}: {e}")
+            print(f"[FAIL] Insert into {table}: {e}")
 
 # --- MAIN ---
 def run_ingestion():
@@ -85,15 +86,15 @@ def run_ingestion():
     conn.close()
     print("✅ Ingestion complete.")
 
+# --- EXECUTE ---
 if __name__ == "__main__":
-    # test Neon connection first
     try:
         with get_conn() as test_conn:
-            with test_conn.cursor() as test_cur:
-                test_cur.execute("SELECT 1;")
-                print("✅ Connected and executed successfully")
+            with test_conn.cursor() as cur:
+                cur.execute("SELECT 1;")
+                print("✅ DB connection OK")
     except Exception as e:
-        print(f"❌ Failed to connect: {e}")
+        print(f"❌ DB connection failed: {e}")
         exit(1)
 
     run_ingestion()
