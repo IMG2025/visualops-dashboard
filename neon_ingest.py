@@ -4,13 +4,13 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 # --- CONFIGURATION ---
-NEON_DB_CONFIG = {{
-    "host": "YOUR_NEON_HOST",
-    "port": 5432,
-    "user": "YOUR_NEON_USER",
-    "password": "YOUR_NEON_PASSWORD",
-    "dbname": "YOUR_NEON_DBNAME",
-}}
+NEON_DB_CONFIG = {
+    "dbname": "your_db",
+    "user": "your_user",
+    "password": "your_password",
+    "host": "your_host",
+    "port": "5432"
+}
 
 EXPORT_ROOT = "toast_exports"
 TARGET_DATE = "20250516"
