@@ -1,12 +1,8 @@
-import os
-import pandas as pd
-import psycopg2
-from psycopg2.extras import execute_values
-
-# --- CONFIGURATION ---
 from dotenv import load_dotenv
 import os
 import psycopg2
+from psycopg2.extras import execute_values
+import pandas as pd
 
 # --- Load environment variables ---
 load_dotenv()
@@ -16,19 +12,8 @@ NEON_DB_CONFIG = {
     "user": os.environ.get("NEON_DB_USER"),
     "password": os.environ.get("NEON_DB_PASSWORD"),
     "host": os.environ.get("NEON_DB_HOST"),
-    "port": os.environ.get("NEON_DB_PORT", "5432")  # default to 5432 if not set
+    "port": os.environ.get("NEON_DB_PORT", "5432")
 }
-
-# Connect to Neon
-conn = psycopg2.connect(**NEON_DB_CONFIG)
-cur = conn.cursor()
-
-# Example test query
-cur.execute("SELECT 1;")
-print("✅ Connected and executed successfully")
-
-cur.close()
-conn.close()
 
 EXPORT_ROOT = "toast_exports"
 TARGET_DATE = "20250516"
@@ -43,25 +28,25 @@ def load_csv(file_path):
     try:
         return pd.read_csv(file_path)
     except Exception as e:
-        print(f"Failed to load {{file_path}}: {{e}}")
+        print(f"Failed to load {file_path}: {e}")
         return None
 
 def insert_dataframe(conn, df, table):
     if df is None or df.empty:
-        print(f"[SKIP] No data for table: {{table}}")
+        print(f"[SKIP] No data for table: {table}")
         return
 
-    columns = list(df.columns)
+    columns = [f'"{col}"' for col in df.columns]
     values = df.values.tolist()
     placeholders = "(" + ",".join(["%s"] * len(columns)) + ")"
-    query = f'INSERT INTO {{SCHEMA}}.{{table}} ({{",".join(columns)}}) VALUES %s'
+    query = f'INSERT INTO {SCHEMA}.{table} ({",".join(columns)}) VALUES %s'
 
     with conn.cursor() as cur:
         try:
             execute_values(cur, query, values)
-            print(f"[OK] Inserted into {{table}} ({{len(values)}} rows)")
+            print(f"[OK] Inserted into {table} ({len(values)} rows)")
         except Exception as e:
-            print(f"[ERR] Failed to insert into {{table}}: {{e}}")
+            print(f"[ERR] Failed to insert into {table}: {e}")
 
 # --- MAIN ---
 def run_ingestion():
@@ -70,9 +55,9 @@ def run_ingestion():
 
     for location in locations:
         base_path = os.path.join(EXPORT_ROOT, location, TARGET_DATE)
-        print(f"📂 Processing: {{base_path}}")
+        print(f"📂 Processing: {base_path}")
 
-        files_to_tables = {{
+        files_to_tables = {
             "ItemSelectionDetails.csv": "item_selection_details",
             "ModifiersSelectionDetails.csv": "modifiers_selection_details",
             "CheckDetails.csv": "check_details",
@@ -82,22 +67,33 @@ def run_ingestion():
             "KitchenTimings.csv": "kitchen_timings",
             "CashEntries.csv": "cash_entries",
             "TimeEntries.csv": "time_entries"
-        }}
+        }
 
         for filename, table in files_to_tables.items():
             full_path = os.path.join(base_path, filename)
             if not os.path.isfile(full_path):
-                print(f"[WARN] Missing: {{full_path}}")
+                print(f"[WARN] Missing: {full_path}")
                 continue
 
             df = load_csv(full_path)
-            df["location"] = location  # Add location tag
-            df["export_date"] = TARGET_DATE  # Add export date tag
-            insert_dataframe(conn, df, table)
+            if df is not None:
+                df["location"] = location
+                df["export_date"] = TARGET_DATE
+                insert_dataframe(conn, df, table)
 
     conn.commit()
     conn.close()
     print("✅ Ingestion complete.")
 
 if __name__ == "__main__":
+    # test Neon connection first
+    try:
+        with get_conn() as test_conn:
+            with test_conn.cursor() as test_cur:
+                test_cur.execute("SELECT 1;")
+                print("✅ Connected and executed successfully")
+    except Exception as e:
+        print(f"❌ Failed to connect: {e}")
+        exit(1)
+
     run_ingestion()
