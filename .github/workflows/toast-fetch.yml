@@ -1,12 +1,12 @@
-name: 🍞 Toast Data Fetch
+name: 🍞 Toast Data Pipeline
 
 on:
   schedule:
-    - cron: "0 10 * * *"  # 6 AM ET / 10 AM UTC daily
+    - cron: "0 10 * * *"  # 6 AM ET daily
   workflow_dispatch:
 
 jobs:
-  fetch_toast_data:
+  toast_pipeline:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +20,7 @@ jobs:
 
     - name: 📦 Install dependencies
       run: |
-        pip install -r requirements.txt || pip install pandas python-dotenv paramiko
+        pip install -r requirements.txt || pip install pandas python-dotenv psycopg2-binary paramiko
 
     - name: 🔐 Set up SSH Key
       run: |
@@ -31,9 +31,20 @@ jobs:
     - name: 🧾 Add known hosts
       run: ssh-keyscan ${{ secrets.TOAST_SFTP_HOST }} >> ~/.ssh/known_hosts
 
-    - name: 🚀 Run signalfetch.py
+    - name: 📂 Run signalfetch.py (Download from Toast)
       env:
-        TOAST_SFTP_USERNAME: PaulFrenchBakeryDataExports
-        TOAST_SFTP_HOST: s-9b0f88558b264dfda.server.transfer.us-east-1.amazonaws.com
+        TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
+        TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
+        TOAST_EXPORT_PATH: ${{ secrets.TOAST_EXPORT_PATH }}
       run: |
         python3 signalfetch.py
+
+    - name: 🧠 Run neon_ingest.py (Ingest into Neon)
+      env:
+        NEON_DB_HOST: ${{ secrets.NEON_DB_HOST }}
+        NEON_DB_PORT: ${{ secrets.NEON_DB_PORT }}
+        NEON_DB_NAME: ${{ secrets.NEON_DB_NAME }}
+        NEON_DB_USER: ${{ secrets.NEON_DB_USER }}
+        NEON_DB_PASSWORD: ${{ secrets.NEON_DB_PASSWORD }}
+      run: |
+        python3 neon_ingest.py
