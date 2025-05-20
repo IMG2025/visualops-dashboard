@@ -1,16 +1,27 @@
 import os
+from datetime import datetime, timedelta
 
-# Base SFTP mount or sync root directory
-base_dir = "toast_exports"
-
-# Replace with actual location and range of dates to verify
+# === CONFIGURATION ===
 locations = ["57130", "57138"]
-dates = ["20250517", "20250518", "20250519", "20250520"]
+days_back = 10
+base_path = "toast_exports"
 
-print("📋 SFTP Folder Presence Audit")
-for location in locations:
-    for date in dates:
-        path = os.path.join(base_dir, location, date)
-        exists = os.path.exists(path)
-        status = "✅ FOUND" if exists else "❌ MISSING"
-        print(f"{path:<40} {status}")
+# === Generate Expected Date List ===
+date_list = [(datetime.today() - timedelta(days=i)).strftime("%Y%m%d") for i in range(days_back)]
+
+# === Scan Results ===
+print("SFTP Audit Report\n" + "="*40)
+for loc in locations:
+    loc_path = os.path.join(base_path, loc)
+    print(f"📍 Location: {loc}")
+    if not os.path.exists(loc_path):
+        print(f"  ❌ Location folder not found: {loc_path}")
+        continue
+
+    for date in date_list:
+        date_path = os.path.join(loc_path, date)
+        if os.path.exists(date_path) and os.path.isdir(date_path):
+            print(f"  ✅ {date} - Found")
+        else:
+            print(f"  ❌ {date} - Missing")
+    print("-" * 40)
