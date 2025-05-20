@@ -9,25 +9,35 @@ st.title("📊 VisualOps: Multi-Location Toast Dashboard")
 # --- Utility Loaders ---
 def load_csv(filepath):
     try:
+        if os.path.getsize(filepath) == 0:
+            raise ValueError("File is empty")
         df = pd.read_csv(filepath)
-        st.caption(f"{os.path.basename(filepath)} Columns: {df.columns.tolist()}")
-        return df if not df.empty else None
+        if df.empty or len(df.columns) == 0:
+            raise ValueError("Empty or malformed CSV")
+        st.markdown(f"`{os.path.basename(filepath)}` Columns: {list(df.columns)}")
+        return df
     except Exception as e:
         st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
         return None
 
 def load_json(filepath):
     try:
+        if os.path.getsize(filepath) == 0:
+            raise ValueError("File is empty")
         with open(filepath, "r") as f:
-            return json.load(f)
+            data = json.load(f)
+        st.markdown(f"`{os.path.basename(filepath)}` ✅ JSON loaded.")
+        return data
     except Exception as e:
         st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
         return None
 
 def load_excel(filepath):
     try:
+        if os.path.getsize(filepath) == 0:
+            raise ValueError("File is empty")
         df = pd.read_excel(filepath, engine="openpyxl")
-        st.caption(f"{os.path.basename(filepath)} Columns: {df.columns.tolist()}")
+        st.markdown(f"`{os.path.basename(filepath)}` Columns: {list(df.columns)}")
         return df
     except Exception as e:
         st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
@@ -61,40 +71,41 @@ except Exception as e:
 
 # --- Top Menu Items ---
 item_df = load_csv(os.path.join(data_path, "ItemSelectionDetails.csv"))
-if item_df is not None and {"Menu Item", "Qty", "Net Price"}.issubset(item_df.columns):
-    st.subheader("🍽️ Top Menu Items")
+if item_df is not None and all(col in item_df.columns for col in ["Menu Item", "Qty", "Net Price"]):
     top_items = item_df.groupby("Menu Item").agg({
-        "Qty": "sum", "Net Price": "sum"
+        "Qty": "sum",
+        "Net Price": "sum"
     }).reset_index().rename(columns={"Qty": "Quantity Sold", "Net Price": "Total Sales"})
-    st.dataframe(top_items.sort_values("Quantity Sold", ascending=False))
-else:
-    st.info("No valid ItemSelectionDetails.csv found or missing required columns.")
+    top_items = top_items.sort_values("Quantity Sold", ascending=False)
+    st.subheader("🍽️ Top Menu Items")
+    st.dataframe(top_items)
 
 # --- Sales Summary ---
 check_df = load_csv(os.path.join(data_path, "CheckDetails.csv"))
 if check_df is not None:
     st.subheader("💰 Sales Summary (from CheckDetails)")
-    st.metric("Total Sales", f"${check_df.get('Total', pd.Series()).sum():,.2f}")
-    st.metric("Total Tax", f"${check_df.get('Tax', pd.Series()).sum():,.2f}")
-    st.metric("Total Discount", f"${check_df.get('Discount', pd.Series()).sum():,.2f}")
+    st.metric("Total Sales", f"${check_df['Total'].sum():,.2f}" if "Total" in check_df.columns else "N/A")
+    st.metric("Total Tax", f"${check_df['Tax'].sum():,.2f}" if "Tax" in check_df.columns else "N/A")
+    st.metric("Total Discount", f"${check_df['Discount'].sum():,.2f}" if "Discount" in check_df.columns else "N/A")
 
 # --- Tender Breakdown ---
 order_df = load_csv(os.path.join(data_path, "OrderDetails.csv"))
 if order_df is not None:
-    if "Tender" in order_df.columns:
-        st.subheader("📦 Order Tenders Summary")
+    if "Tender" not in order_df.columns:
+        st.error("🔴 Missing critical column 'Tender' in OrderDetails.csv")
+    else:
         tender_summary = order_df["Tender"].value_counts().reset_index()
         tender_summary.columns = ["Tender Type", "Count"]
+        st.subheader("📦 Order Tenders Summary")
         st.dataframe(tender_summary)
-    else:
-        st.warning("⚠️ 'Tender' column missing from OrderDetails.csv")
 
 # --- Labor Summary ---
 labor_df = load_csv(os.path.join(data_path, "TimeEntries.csv"))
-if labor_df is not None and {"Job Title", "Payable Hours", "Total Pay"}.issubset(labor_df.columns):
+if labor_df is not None and all(col in labor_df.columns for col in ["Job Title", "Payable Hours", "Total Pay"]):
     st.subheader("👥 Labor Summary")
     labor_summary = labor_df.groupby("Job Title").agg({
-        "Payable Hours": "sum", "Total Pay": "sum"
+        "Payable Hours": "sum",
+        "Total Pay": "sum"
     }).reset_index()
     st.dataframe(labor_summary)
 
@@ -128,19 +139,23 @@ if kitchen_df is not None:
 menu_v1 = load_json(os.path.join(data_path, "MenuExport.json"))
 if menu_v1 is not None:
     st.subheader("📋 Menu Export (v1)")
-    menu_items = []
-    for group in menu_v1.get("menuGroups", []):
-        for item in group.get("menuItems", []):
-            menu_items.append({
-                "Group": group.get("name"),
-                "Item": item.get("name"),
-                "Price": item.get("basePrice")
-            })
-    if menu_items:
-        st.dataframe(pd.DataFrame(menu_items))
+    if "menuGroups" in menu_v1:
+        menu_items = []
+        for group in menu_v1["menuGroups"]:
+            for item in group.get("menuItems", []):
+                menu_items.append({
+                    "Group": group.get("name"),
+                    "Item": item.get("name"),
+                    "Price": item.get("basePrice")
+                })
+        if menu_items:
+            st.dataframe(pd.DataFrame(menu_items))
 
 # --- Menu Export JSON (v2) ---
 menu_v2 = load_json(os.path.join(data_path, "MenuExportV2.json"))
 if menu_v2 is not None:
     st.subheader("📋 Menu Export (v2)")
-    st.json(menu_v2)
+    if isinstance(menu_v2, dict):
+        keys = list(menu_v2.keys())
+        st.markdown(f"Top-level keys: `{keys}`")
+        st.json(menu_v2)
