@@ -8,6 +8,28 @@ from datetime import datetime
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
 st.title("📊 VisualOps: Multi-Location Toast Dashboard")
 
+# 🔍 Show SFTP Audit Status
+audit_log_path = os.path.expanduser("~/visualops/sftp_audit.log")
+if os.path.exists(audit_log_path):
+    with open(audit_log_path, "r") as f:
+        audit_lines = f.readlines()
+
+    st.subheader("📋 SFTP Audit Summary")
+    current_section = ""
+    for line in audit_lines:
+        line = line.strip()
+        if "Location" in line:
+            current_section = line
+            st.markdown(f"### {line}")
+        elif line.startswith("✅"):
+            st.success(line)
+        elif line.startswith("❌"):
+            st.error(line)
+        elif line.startswith("⚠️"):
+            st.warning(line)
+        elif line.startswith("-") or line == "":
+            continue
+
 # --- User Inputs ---
 locations = ["57130", "57138"]
 location_id = st.selectbox("📍 Select Location", options=locations)
