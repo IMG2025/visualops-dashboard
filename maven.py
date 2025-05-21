@@ -5,10 +5,12 @@ import psycopg2
 import psycopg2.extras
 from datetime import datetime, timedelta
 from dateutil import parser
+from alerts import send_alert  # ✅ Add this import
 
 # === MAVEN Governance ===
 def start_maven():
     print("[MAVEN] MAVEN governance starting...")
+    send_alert(source="MAVEN", event="Startup", result="✅ MAVEN has started governance monitoring.")
     threading.Thread(target=monitor_pulse, daemon=True).start()
     threading.Thread(target=monitor_compliance, daemon=True).start()
 
@@ -26,13 +28,13 @@ def monitor_pulse():
                             last_ping = parser.parse(last_ping)
                         last_ping = last_ping.replace(tzinfo=None)
                         if datetime.utcnow() - last_ping > timedelta(minutes=3):
-                            print("[MAVEN] Pulse heartbeat missing for 3+ minutes.")
+                            send_alert(source="MAVEN", event="Pulse Check", result="❌ Heartbeat missing for 3+ minutes.")
                         else:
-                            print("[MAVEN] Pulse is healthy.")
+                            send_alert(source="MAVEN", event="Pulse Check", result="✅ Pulse is healthy.")
                     else:
-                        print("[MAVEN] No Pulse heartbeat found.")
+                        send_alert(source="MAVEN", event="Pulse Check", result="⚠️ No Pulse heartbeat found.")
         except Exception as e:
-            print("[MAVEN] Pulse monitor error:", e)
+            send_alert(source="MAVEN", event="Pulse Error", result=f"❌ Error: {str(e)}")
         time.sleep(60)
 
 # === Compliance Monitoring ===
@@ -49,11 +51,11 @@ def monitor_compliance():
                             last_event = parser.parse(last_event)
                         last_event = last_event.replace(tzinfo=None)
                         if datetime.utcnow() - last_event > timedelta(minutes=5):
-                            print("[MAVEN] Compliance alert: no signal events in 5+ minutes.")
+                            send_alert(source="MAVEN", event="Compliance Check", result="⚠️ No signal events in 5+ minutes.")
                         else:
-                            print("[MAVEN] Compliance signals active.")
+                            send_alert(source="MAVEN", event="Compliance Check", result="✅ Compliance signals active.")
                     else:
-                        print("[MAVEN] No recent compliance issues.")
+                        send_alert(source="MAVEN", event="Compliance Check", result="⚠️ No recent compliance signals found.")
         except Exception as e:
-            print("[MAVEN] Compliance monitor error:", e)
+            send_alert(source="MAVEN", event="Compliance Error", result=f"❌ Error: {str(e)}")
         time.sleep(60)
