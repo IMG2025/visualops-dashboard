@@ -1,6 +1,6 @@
-name: 🍞 Toast Data Pipeline
+name: Toast Data Pipeline
 
-    on:
+on:
   push:
     branches: [slim-main]
   schedule:
@@ -8,25 +8,22 @@ name: 🍞 Toast Data Pipeline
   workflow_dispatch:
 
 jobs:
-  ingest-toast:
+  toast_ingest:
     runs-on: ubuntu-latest
-
     steps:
-      - name: 🔄 Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: 🐍 Set up Python
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
-      - name: 🧪 Install dependencies
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 🍽️ Run ingestion
-        run: |
-          python ingest_to_gcp.py
+      - name: Run ingestion script
+        run: python ingest_to_gcp.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
