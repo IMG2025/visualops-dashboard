@@ -7,6 +7,8 @@ from datetime import datetime
 
 # Use DATABASE_URL from environment variable
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("❌ DATABASE_URL is not set. Check your GitHub Secrets or .env file.")
 
 BASE_URL = "https://raw.githubusercontent.com/IMG2025/visualops-dashboard/main/toast_exports"
 
