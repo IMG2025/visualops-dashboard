@@ -11,10 +11,8 @@ if not DATABASE_URL:
     raise ValueError("❌ DATABASE_URL is not set. Check your GitHub Secrets or .env file.")
 
 BASE_URL = "https://raw.githubusercontent.com/IMG2025/visualops-dashboard/main/toast_exports"
-
 LOCATIONS = ["57130", "57138"]
 DATE = "20250519"
-
 TABLES = [
     "ItemSelectionDetails",
     "ModifiersSelectionDetails",
@@ -26,7 +24,6 @@ TABLES = [
     "CashEntries",
     "TimeEntries",
 ]
-
 SCHEMA = "visualops"
 
 def fetch_csv(location_id, date, table_name):
