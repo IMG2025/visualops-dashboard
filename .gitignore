@@ -1,0 +1,10 @@
+.cache/
+.config/
+.ssh/
+*.log
+*.b64
+*.p
+venv/
+__pycache__/
+*.sqlite3
+eval*
