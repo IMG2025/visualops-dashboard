@@ -53,8 +53,8 @@ selected_date = st.selectbox("🗓️ Select Date", options=available_dates)
 def load_table(table_name):
     query = f"""
         SELECT * FROM visualops.{table_name}
-        WHERE location_id = '{location_id}'
-          AND TO_CHAR(order_date, 'YYYYMMDD') = '{selected_date}'
+        WHERE location = '{location_id}'
+          AND TO_CHAR(opened, 'YYYYMMDD') = '{selected_date}'
     """
     return run_query(query)
 
