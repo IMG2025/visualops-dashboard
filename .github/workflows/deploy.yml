@@ -1,4 +1,4 @@
-name: Automated Toast Data Pipeline
+# Automated Toast Data Pipeline
 
 on:
   schedule:
