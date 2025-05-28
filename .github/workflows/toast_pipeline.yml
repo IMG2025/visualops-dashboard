@@ -1,18 +1,16 @@
-name: Toast Data Pipeline
+# Toast Data Pipeline
 
 on:
-  push:
-    branches:
-      - slim-main
   schedule:
-    - cron: "0 3 * * *"
+    - cron: '0 3 * * *'  # Runs daily at 3 AM UTC
   workflow_dispatch:
 
 jobs:
   toast_ingest:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      - name: Checkout Repo
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -20,11 +18,32 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+      - name: Install Requirements
+        run: pip install -r requirements.txt
 
-      - name: Run ingestion script
+      - name: Decode SFTP Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "$TOAST_SFTP_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+        env:
+          TOAST_SFTP_PRIVATE_KEY_B64: ${{ secrets.TOAST_SFTP_PRIVATE_KEY_B64 }}
+
+      - name: Run signalfetch.py to pull data from Toast SFTP
+        run: python signalfetch.py
+        env:
+          TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
+          TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
+
+      - name: Commit downloaded toast_exports/
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add toast_exports/
+          git commit -m "⬇️ Daily Toast SFTP Export" || echo "No changes to commit"
+          git push
+
+      - name: Ingest data to GCP database
         run: python ingest_to_gcp.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
