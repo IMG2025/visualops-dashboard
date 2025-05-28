@@ -35,9 +35,9 @@ location_id = st.selectbox("📍 Select Location", options=locations)
 
 # Get available dates dynamically
 available_dates_query = f"""
-    SELECT DISTINCT TO_CHAR(order_date, 'YYYYMMDD') AS date
+    SELECT DISTINCT TO_CHAR(opened, 'YYYYMMDD') AS date
     FROM visualops.order_details
-    WHERE location_id = '{location_id}'
+    WHERE location = '{location_id}'
     ORDER BY date DESC
 """
 available_dates_df = run_query(available_dates_query)
