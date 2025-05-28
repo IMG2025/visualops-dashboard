@@ -1,5 +1,3 @@
-name: Debug Streamlit App
-
 on:
   workflow_dispatch:
 
