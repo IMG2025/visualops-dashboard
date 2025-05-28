@@ -1,5 +1,4 @@
-# .github/workflows/ingest.yml
-name: Daily Data Ingest
+name: Automated Toast Data Pipeline
 
 on:
   schedule:
@@ -7,21 +6,43 @@ on:
   workflow_dispatch:
 
 jobs:
-  ingest:
+  toast_pipeline:
     runs-on: ubuntu-latest
+
     steps:
-    - name: Checkout Repo
+    - name: 📥 Checkout Repo
       uses: actions/checkout@v3
 
-    - name: Set up Python
+    - name: 🐍 Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    - name: Install Requirements
+    - name: 🛠️ Install Python Dependencies
       run: pip install -r requirements.txt
 
-    - name: Run Ingest
+    - name: 🔐 Setup SSH Key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.TOAST_SFTP_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+
+    - name: 📡 Fetch Toast SFTP Files
+      env:
+        TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
+        TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
+      run: python signalfetch.py
+
+    - name: 📝 Commit Toast Exports to GitHub
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add toast_exports/
+        timestamp="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+        git commit -m "⬆️ Auto-ingest: Toast exports @ $timestamp" || echo "No changes to commit"
+        git push origin HEAD:slim-main
+
+    - name: 🚀 Ingest to GCP PostgreSQL
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: python ingest_to_gcp.py
