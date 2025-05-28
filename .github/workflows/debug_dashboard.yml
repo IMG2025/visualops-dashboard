@@ -6,6 +6,9 @@ on:
 jobs:
   debug:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
@@ -18,5 +21,16 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
 
-      - name: Run Streamlit Dashboard
-        run: streamlit run dashboard.py --server.headless true
+      - name: Debug Log: Print DATABASE_URL
+        run: echo "DATABASE_URL=$DATABASE_URL"
+
+      - name: Run Streamlit Dashboard in Debug Mode
+        run: |
+          mkdir logs
+          streamlit run dashboard.py --server.headless true > logs/output.log 2>&1 || true
+
+      - name: Upload Debug Logs
+        uses: actions/upload-artifact@v3
+        with:
+          name: streamlit-logs
+          path: logs/output.log
