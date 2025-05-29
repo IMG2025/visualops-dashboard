@@ -1,12 +1,12 @@
-# Automated Toast Data Pipeline
+# .github/workflows/ingest.yml
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # Every day at 3 AM UTC
+    - cron: '0 3 * * *'  # Daily at 3 AM UTC
   workflow_dispatch:
 
 jobs:
-  toast_pipeline:
+  full-ingest:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,31 +18,32 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: 🛠️ Install Python Dependencies
+    - name: 📦 Install Dependencies
       run: pip install -r requirements.txt
 
-    - name: 🔐 Setup SSH Key
+    - name: 🔐 Setup SSH Private Key
+      env:
+        TOAST_SFTP_PRIVATE_KEY_B64: ${{ secrets.TOAST_SFTP_PRIVATE_KEY_B64 }}
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.TOAST_SFTP_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        echo "$TOAST_SFTP_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
 
-    - name: 📡 Fetch Toast SFTP Files
+    - name: 📡 Run Toast SFTP Fetch
       env:
         TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
         TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
       run: python signalfetch.py
 
-    - name: 📝 Commit Toast Exports to GitHub
+    - name: 📝 Commit New Exported Files
       run: |
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@users.noreply.github.com"
         git add toast_exports/
-        timestamp="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-        git commit -m "⬆️ Auto-ingest: Toast exports @ $timestamp" || echo "No changes to commit"
-        git push origin HEAD:slim-main
+        git commit -m "⬆️ Daily Toast data sync" || echo "No changes to commit"
+        git push
 
-    - name: 🚀 Ingest to GCP PostgreSQL
+    - name: 🛢️ Ingest to GCP PostgreSQL
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: python ingest_to_gcp.py
