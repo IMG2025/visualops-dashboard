@@ -1,4 +1,4 @@
-Ingest Toast CSV into Neon
+# Ingest Toast CSV into Neon
 
 on:
   workflow_dispatch:
