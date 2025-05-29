@@ -5,9 +5,17 @@ from psycopg2 import OperationalError
 import pandas as pd
 import traceback
 
+st.write("🔍 Debug: Starting app...")
+try:
+    for var in required_env_vars:
+        st.write(f"{var}: {os.getenv(var)}")
+except Exception as e:
+    st.error(f"❌ Could not read env vars: {e}")
+    
 # === Page setup ===
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
 st.title("📊 VisualOps Dashboard")
+st.info("✅ Reached Streamlit main start.")
 
 # === Required environment variables ===
 required_env_vars = ["NEON_HOST", "NEON_DB", "NEON_USER", "NEON_PASSWORD"]
