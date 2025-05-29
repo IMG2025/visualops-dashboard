@@ -3,14 +3,21 @@ import pandas as pd
 import psycopg2
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+# === Use Neon secret env vars ===
+DB_CONFIG = {
+    'host': os.getenv("NEON_HOST"),
+    'dbname': os.getenv("NEON_DB"),
+    'user': os.getenv("NEON_USER"),
+    'password': os.getenv("NEON_PASSWORD"),
+    'port': 5432
+}
 
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
 st.title("Cole Hospitality - VisualOps Dashboard")
 
 def run_query(query, params=None):
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
         cur.execute(query, params if params else ())
         colnames = [desc[0] for desc in cur.description]
@@ -21,10 +28,8 @@ def run_query(query, params=None):
         st.error(f"Database error: {e}")
         return pd.DataFrame()
     finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
 
 # Step 1: Location filter
 st.sidebar.header("Filter Data")
