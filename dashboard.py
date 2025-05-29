@@ -1,23 +1,28 @@
 import streamlit as st
 import os
 import psycopg2
-from psycopg2 import OperationalError
 import pandas as pd
+from psycopg2 import OperationalError
 
-st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
-st.title("✅ VisualOps Boot Check")
+st.set_page_config(page_title="CoreIdentity Dashboard", layout="wide")
+st.title("🧪 VisualOps Diagnostic")
 
-st.write("🔍 Stage 1: Environment Check")
+# === Stage 1: Sanity Check ===
+st.info("✅ dashboard.py is loading...")
+st.code("📂 Running file: dashboard.py")
+
+# === Stage 2: Environment Variables ===
 required_vars = ["NEON_HOST", "NEON_DB", "NEON_USER", "NEON_PASSWORD"]
-missing = [var for var in required_vars if var not in os.environ or not os.environ[var]]
+missing = [v for v in required_vars if not os.getenv(v)]
 if missing:
     st.error(f"❌ Missing secrets: {', '.join(missing)}")
     st.stop()
-else:
-    st.success("✅ All environment secrets loaded.")
 
-st.write("🔍 Stage 2: DB Connection Check")
+st.success("✅ All secrets loaded.")
+
+# === Stage 3: Connect to Neon ===
 try:
+    st.write("🔌 Connecting to Neon...")
     conn = psycopg2.connect(
         host=os.environ["NEON_HOST"],
         dbname=os.environ["NEON_DB"],
@@ -25,17 +30,18 @@ try:
         password=os.environ["NEON_PASSWORD"],
         connect_timeout=5
     )
-    st.success("✅ Connected to Neon DB.")
+    st.success("✅ Connection successful.")
 except OperationalError as e:
-    st.error(f"❌ Could not connect: {e}")
+    st.error(f"❌ Connection failed: {e}")
     st.stop()
 
-st.write("🔍 Stage 3: Verifying Tables...")
+# === Stage 4: Test Query ===
 try:
+    st.write("🔍 Running test query...")
     cur = conn.cursor()
-    cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-    tables = cur.fetchall()
-    st.write("📦 Tables:", [t[0] for t in tables])
+    cur.execute("SELECT NOW();")
+    now = cur.fetchone()[0]
+    st.success(f"🕒 Database time: {now}")
     cur.close()
 except Exception as e:
     st.error(f"❌ Query error: {e}")
