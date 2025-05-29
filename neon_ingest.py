@@ -4,11 +4,12 @@ import paramiko
 import psycopg2
 import csv
 from io import StringIO
+from datetime import datetime
 from alerts import send_alert
 
 def main():
     try:
-        # === Setup Neon DB connection ===
+        # === Neon DB Connection ===
         conn = psycopg2.connect(
             host=os.getenv("NEON_HOST"),
             database=os.getenv("NEON_DB"),
@@ -18,37 +19,37 @@ def main():
         )
         cursor = conn.cursor()
 
-        # === Decode private key for SFTP ===
+        # === Decode SFTP Key ===
         private_key_str = base64.b64decode(os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")).decode()
         private_key = paramiko.RSAKey.from_private_key(StringIO(private_key_str))
 
-        # === Connect to SFTP ===
+        # === SFTP Setup ===
         sftp_host = os.getenv("TOAST_SFTP_HOST")
         sftp_user = os.getenv("TOAST_SFTP_USERNAME")
-
         transport = paramiko.Transport((sftp_host, 22))
         transport.connect(username=sftp_user, pkey=private_key)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
-        # === List contents of SFTP root directory ===
-        files = sorted(sftp.listdir_attr(), key=lambda f: f.st_mtime, reverse=True)
-        print("📂 SFTP contents:", [f.filename for f in files])
+        # === Choose location (e.g., 57130)
+        location_id = "57130"
+        sftp.chdir(f"/{location_id}")
+        folders = sftp.listdir()
+        print("📁 Available date folders:", folders)
 
-        # === Identify latest CSV file ===
-        latest_csv = next((f.filename for f in files if f.filename.endswith(".csv")), None)
+        latest_date_folder = sorted(folders, reverse=True)[0]
+        sftp.chdir(f"/{location_id}/{latest_date_folder}")
 
-        if not latest_csv:
-            raise Exception("No CSV file found on SFTP server.")
+        # === Choose CSV file to ingest
+        csv_file = "AllItemsReport.csv"
+        print(f"📥 Loading file: /{location_id}/{latest_date_folder}/{csv_file}")
 
-        print(f"📥 Downloading: {latest_csv}")
-        with sftp.open(latest_csv) as f:
+        with sftp.open(csv_file) as f:
             content = f.read().decode()
 
         reader = csv.reader(StringIO(content))
         header = next(reader)
 
-        # === Insert into Neon ===
-        print("🚀 Inserting into Neon...")
+        # === Ingest into Neon
         cursor.execute("TRUNCATE TABLE toast_raw_data;")
         for row in reader:
             cursor.execute(
@@ -58,11 +59,11 @@ def main():
 
         conn.commit()
         print("✅ Ingestion complete.")
-        send_alert("neon_ingest.py", f"{latest_csv}", "Success")
+        send_alert("neon_ingest.py", csv_file, "Success")
 
     except Exception as e:
         print(f"❌ Ingestion failed: {e}")
-        send_alert("neon_ingest.py", "Ingestion Error", str(e))
+        send_alert("neon_ingest.py", "Failure", str(e))
 
     finally:
         try:
