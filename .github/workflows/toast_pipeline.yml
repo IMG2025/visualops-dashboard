@@ -1,4 +1,4 @@
-# Toast Data Pipeline
+# Toast Data Ingestion to Neon
 
 on:
   schedule:
@@ -6,44 +6,29 @@ on:
   workflow_dispatch:
 
 jobs:
-  toast_ingest:
+  toast_to_neon:
     runs-on: ubuntu-latest
+
+    env:
+      NEON_HOST: ${{ secrets.NEON_HOST }}
+      NEON_DB: ${{ secrets.NEON_DB }}
+      NEON_USER: ${{ secrets.NEON_USER }}
+      NEON_PASSWORD: ${{ secrets.NEON_PASSWORD }}
+      TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
+      TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
+      TOAST_SFTP_PRIVATE_KEY_B64: ${{ secrets.TOAST_SFTP_PRIVATE_KEY_B64 }}
 
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install Requirements
         run: pip install -r requirements.txt
 
-      - name: Decode SFTP Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "$TOAST_SFTP_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-        env:
-          TOAST_SFTP_PRIVATE_KEY_B64: ${{ secrets.TOAST_SFTP_PRIVATE_KEY_B64 }}
-
-      - name: Run signalfetch.py to pull data from Toast SFTP
-        run: python signalfetch.py
-        env:
-          TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
-          TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
-
-      - name: Commit downloaded toast_exports/
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add toast_exports/
-          git commit -m "⬇️ Daily Toast SFTP Export" || echo "No changes to commit"
-          git push
-
-      - name: Ingest data to GCP database
-        run: python ingest_to_gcp.py
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Run Neon Ingest
+        run: python neon_ingest.py
