@@ -1,4 +1,4 @@
-Name: Toast Data Ingestion to Neon
+name: Toast Data Ingestion to Neon
 
 on:
   schedule:
