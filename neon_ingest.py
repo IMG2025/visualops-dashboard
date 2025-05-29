@@ -1,94 +1,85 @@
 import os
+import csv
+import io
 import base64
 import paramiko
 import psycopg2
-import csv
-from io import StringIO
 from datetime import datetime
 from alerts import send_alert
 
-def main():
-    try:
-        # === Neon DB Connection ===
-        conn = psycopg2.connect(
-            host=os.getenv("NEON_HOST"),
-            database=os.getenv("NEON_DB"),
-            user=os.getenv("NEON_USER"),
-            password=os.getenv("NEON_PASSWORD"),
-            port=5432
-        )
-        cursor = conn.cursor()
+# SFTP connection setup
+host = os.getenv("TOAST_SFTP_HOST")
+username = os.getenv("TOAST_SFTP_USERNAME")
+private_key_b64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
+private_key = paramiko.RSAKey.from_private_key(io.StringIO(base64.b64decode(private_key_b64).decode()))
 
-        # === Decode SFTP Key ===
-        private_key_str = base64.b64decode(os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")).decode()
-        private_key = paramiko.RSAKey.from_private_key(StringIO(private_key_str))
+transport = paramiko.Transport((host, 22))
+transport.connect(username=username, pkey=private_key)
+sftp = paramiko.SFTPClient.from_transport(transport)
 
-        # === SFTP Setup ===
-        sftp_host = os.getenv("TOAST_SFTP_HOST")
-        sftp_user = os.getenv("TOAST_SFTP_USERNAME")
-        transport = paramiko.Transport((sftp_host, 22))
-        transport.connect(username=sftp_user, pkey=private_key)
-        sftp = paramiko.SFTPClient.from_transport(transport)
+# List folders
+folders = sftp.listdir("57130")
+print("📁 Available date folders:", folders)
 
-        # === Choose location (e.g., 57130)
-        location_id = "57130"
-        sftp.chdir(f"/{location_id}")
-        folders = sorted(sftp.listdir(), reverse=True)
-        print("📁 Available date folders:", folders)
+# Use most recent folder
+latest_folder = sorted(folders)[-1]
+file_path = f"57130/{latest_folder}/AllItemsReport.csv"
+print(f"📥 Loading file: /{file_path}")
 
-        latest_date_folder = folders[0]
-        sftp.chdir(f"/{location_id}/{latest_date_folder}")
+# Read file
+with sftp.open(file_path, "r") as f:
+    reader = csv.reader(io.StringIO(f.read().decode("utf-8")))
+    header = next(reader)
+    print("🧾 Header:", header)
 
-        # === Choose CSV file to ingest
-        csv_file = "AllItemsReport.csv"
-        print(f"📥 Loading file: /{location_id}/{latest_date_folder}/{csv_file}")
+    data = []
+    for row in reader:
+        if len(row) < len(header):
+            print(f"⚠️ Skipping malformed row: {row}")
+            continue
+        data.append(row)
 
-        with sftp.open(csv_file) as f:
-            raw = f.read().decode().strip()
+sftp.close()
+transport.close()
 
-        if not raw:
-            raise Exception("CSV file is empty.")
+# DB connection
+try:
+    conn = psycopg2.connect(
+        host=os.getenv("NEON_HOST"),
+        database=os.getenv("NEON_DB"),
+        user=os.getenv("NEON_USER"),
+        password=os.getenv("NEON_PASSWORD"),
+        sslmode="require"
+    )
+    cursor = conn.cursor()
 
-        reader = csv.reader(StringIO(raw))
-        header = next(reader, None)
-        if not header:
-            raise Exception("CSV header not found.")
-
-        print(f"🧾 Header ({len(header)} columns): {header}")
-
-        # === Ingest into Neon
-        cursor.execute("TRUNCATE TABLE toast_raw_data;")
-
-        inserted = 0
-        for idx, row in enumerate(reader, start=2):  # Start at 2 to account for header
-            if len(row) != len(header):
-                print(f"⚠️ Row {idx} skipped - column mismatch ({len(row)} vs {len(header)}): {row}")
-                continue
-            try:
-                cursor.execute(
-                    f"INSERT INTO toast_raw_data ({', '.join(header)}) VALUES ({', '.join(['%s'] * len(row))})",
-                    row
-                )
-                inserted += 1
-            except Exception as e:
-                print(f"❌ Failed to insert row {idx}: {row}\nReason: {e}")
-
-        conn.commit()
-        print(f"✅ Ingested {inserted} rows.")
-        send_alert("neon_ingest.py", csv_file, "Success")
-
-    except Exception as e:
-        print(f"❌ Ingestion failed: {e}")
-        send_alert("neon_ingest.py", "Failure", str(e))
-
-    finally:
+    # Simple insert or upsert example (adjust to actual schema)
+    for row in data:
         try:
-            cursor.close()
-            conn.close()
-            sftp.close()
-            transport.close()
-        except:
-            pass
+            cursor.execute(
+                """
+                INSERT INTO toast_items (master_id, item_id, parent_id, menu_name, menu_group, subgroup,
+                    menu_item, tags, avg_price, item_qty_incl_voids, pct_qty_incl_voids,
+                    gross_amt_incl_voids, pct_amt_incl_voids, item_qty, gross_amt,
+                    void_qty, void_amt, discount_amt, net_amt, num_orders, pct_orders,
+                    pct_qty_group, pct_qty_menu, pct_qty_all, pct_net_amt_group,
+                    pct_net_amt_menu, pct_net_amt_all)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING;
+                """,
+                row[:27]  # Trim extra columns if needed
+            )
+        except Exception as e:
+            print(f"⚠️ Skipping row due to DB error: {e}")
 
-if __name__ == "__main__":
-    main()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    print("✅ Ingestion complete.")
+
+    send_alert("✅ Toast ingestion succeeded.")
+
+except Exception as e:
+    print("❌ Ingestion failed:", e)
+    send_alert(f"❌ Ingestion failed: {e}")
