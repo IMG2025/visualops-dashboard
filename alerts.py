@@ -1,14 +1,16 @@
-# alerts.py
-
 import os
 import requests
 from datetime import datetime
 
-# ✅ Ensure these are set in your environment securely
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or "7951699971:AAECBkqySq4WHdZ7uFfwYr-rvCsfgDqUjN0"
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or "8102731631"
+# Strictly pull from environment, no default fallbacks
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def send_alert(source: str, event: str, result: str):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("⚠️ Telegram credentials not set. Alert skipped.")
+        return
+
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     message = (
         f"🚨 *MAVEN Alert Triggered!*\n"
