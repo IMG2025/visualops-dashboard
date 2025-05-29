@@ -8,7 +8,7 @@ from datetime import datetime
 # === Environment Setup ===
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise ValueError("❌ DATABASE_URL is not set. Check your GitHub Secrets or .env file.")
+    raise ValueError("\u274c DATABASE_URL is not set. Check your GitHub Secrets or .env file.")
 
 BASE_URL = "https://raw.githubusercontent.com/IMG2025/visualops-dashboard/main/toast_exports"
 LOCATIONS = ["57130", "57138"]
@@ -71,7 +71,7 @@ def fetch_event_logs():
     try:
         cur.execute("SELECT * FROM public.event_logs ORDER BY date DESC LIMIT 10")
         rows = cur.fetchall()
-        print("\n🧠 Most recent event logs:")
+        print("\n\U0001f9e0 Most recent event logs:")
         for row in rows:
             print(row)
     except Exception as e:
@@ -82,18 +82,18 @@ def fetch_event_logs():
 
 # === Main Routine ===
 def main():
-    print("✅ Connecting to database...")
+    print("\u2705 Connecting to database...")
     conn = psycopg2.connect(DATABASE_URL)
 
     for loc in LOCATIONS:
-        print(f"\n📂 Location {loc} | Date {DATE}")
+        print(f"\n\ud83d\udcc2 Location {loc} | Date {DATE}")
         for table in TABLES:
             df = fetch_csv(loc, DATE, table)
             if df is not None:
                 insert_into_gcp(df, table, conn)
 
     conn.close()
-    print("\n✅ Ingestion complete.")
+    print("\n\u2705 Ingestion complete.")
 
     # Post-ingestion validation
     fetch_event_logs()
@@ -102,4 +102,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
+        print(f"\u274c Database connection failed: {e}")
