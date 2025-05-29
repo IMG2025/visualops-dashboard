@@ -4,6 +4,9 @@ import psycopg2
 from psycopg2 import OperationalError
 import time
 
+import streamlit as st
+st.info("🟢 Forced redeploy - Streamlit is running dashboard.py")
+
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
 st.title("📊 VisualOps Dashboard")
 
