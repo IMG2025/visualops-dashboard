@@ -4,7 +4,7 @@ import paramiko
 import psycopg2
 import csv
 from io import StringIO
-from alerts import send_alert  # Optional: triggers Telegram alert
+from alerts import send_alert
 
 def main():
     try:
@@ -18,7 +18,7 @@ def main():
         )
         cursor = conn.cursor()
 
-        # === Load and decode private key ===
+        # === Decode private key for SFTP ===
         private_key_str = base64.b64decode(os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")).decode()
         private_key = paramiko.RSAKey.from_private_key(StringIO(private_key_str))
 
@@ -30,8 +30,11 @@ def main():
         transport.connect(username=sftp_user, pkey=private_key)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
-        # === Fetch latest CSV ===
+        # === List contents of SFTP root directory ===
         files = sorted(sftp.listdir_attr(), key=lambda f: f.st_mtime, reverse=True)
+        print("📂 SFTP contents:", [f.filename for f in files])
+
+        # === Identify latest CSV file ===
         latest_csv = next((f.filename for f in files if f.filename.endswith(".csv")), None)
 
         if not latest_csv:
