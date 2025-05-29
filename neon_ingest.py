@@ -1,85 +1,100 @@
 import os
 import csv
 import io
-import base64
 import paramiko
 import psycopg2
+from dotenv import load_dotenv
 from datetime import datetime
-from alerts import send_alert
 
-# SFTP connection setup
-host = os.getenv("TOAST_SFTP_HOST")
-username = os.getenv("TOAST_SFTP_USERNAME")
-private_key_b64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
-private_key = paramiko.RSAKey.from_private_key(io.StringIO(base64.b64decode(private_key_b64).decode()))
+from alerts import send_alert  # Optional: triggers Telegram alert
 
-transport = paramiko.Transport((host, 22))
-transport.connect(username=username, pkey=private_key)
-sftp = paramiko.SFTPClient.from_transport(transport)
+# Load environment variables
+load_dotenv()
 
-# List folders
-folders = sftp.listdir("57130")
-print("📁 Available date folders:", folders)
+# === SFTP Configuration ===
+SFTP_HOST = os.getenv("TOAST_SFTP_HOST")
+SFTP_USERNAME = os.getenv("TOAST_SFTP_USERNAME")
+SFTP_PRIVATE_KEY_B64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
 
-# Use most recent folder
-latest_folder = sorted(folders)[-1]
-file_path = f"57130/{latest_folder}/AllItemsReport.csv"
-print(f"📥 Loading file: /{file_path}")
+# === PostgreSQL Configuration ===
+DB_HOST = os.getenv("NEON_HOST")
+DB_NAME = os.getenv("NEON_DB")
+DB_USER = os.getenv("NEON_USER")
+DB_PASSWORD = os.getenv("NEON_PASSWORD")
 
-# Read file
-with sftp.open(file_path, "r") as f:
-    reader = csv.reader(io.StringIO(f.read().decode("utf-8")))
-    header = next(reader)
-    print("🧾 Header:", header)
+# === SFTP Connection ===
+def connect_sftp():
+    import base64
+    key_data = base64.b64decode(SFTP_PRIVATE_KEY_B64)
+    pkey = paramiko.RSAKey.from_private_key(io.StringIO(key_data.decode()))
+    transport = paramiko.Transport((SFTP_HOST, 22))
+    transport.connect(username=SFTP_USERNAME, pkey=pkey)
+    return paramiko.SFTPClient.from_transport(transport)
 
-    data = []
-    for row in reader:
-        if len(row) < len(header):
-            print(f"⚠️ Skipping malformed row: {row}")
-            continue
-        data.append(row)
-
-sftp.close()
-transport.close()
-
-# DB connection
-try:
-    conn = psycopg2.connect(
-        host=os.getenv("NEON_HOST"),
-        database=os.getenv("NEON_DB"),
-        user=os.getenv("NEON_USER"),
-        password=os.getenv("NEON_PASSWORD"),
-        sslmode="require"
+# === Database Connection ===
+def connect_db():
+    return psycopg2.connect(
+        host=DB_HOST,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        sslmode='require'
     )
-    cursor = conn.cursor()
 
-    # Simple insert or upsert example (adjust to actual schema)
-    for row in data:
+# === Process a CSV File ===
+def process_csv(file_stream, cursor):
+    reader = csv.reader(io.TextIOWrapper(file_stream, encoding='utf-8'))
+    headers = next(reader, None)
+    print("🧾 Header:", headers)
+
+    for row in reader:
         try:
+            if len(row) < 5:
+                print("⚠️ Skipping malformed row:", row)
+                continue
+            item_id = row[1]
+            menu_name = row[3]
+            gross_amount = float(row[12]) if row[12] else 0.0
             cursor.execute(
-                """
-                INSERT INTO toast_items (master_id, item_id, parent_id, menu_name, menu_group, subgroup,
-                    menu_item, tags, avg_price, item_qty_incl_voids, pct_qty_incl_voids,
-                    gross_amt_incl_voids, pct_amt_incl_voids, item_qty, gross_amt,
-                    void_qty, void_amt, discount_amt, net_amt, num_orders, pct_orders,
-                    pct_qty_group, pct_qty_menu, pct_qty_all, pct_net_amt_group,
-                    pct_net_amt_menu, pct_net_amt_all)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT DO NOTHING;
-                """,
-                row[:27]  # Trim extra columns if needed
+                "INSERT INTO toast_data (item_id, menu_name, gross_amount) VALUES (%s, %s, %s)",
+                (item_id, menu_name, gross_amount)
             )
         except Exception as e:
-            print(f"⚠️ Skipping row due to DB error: {e}")
+            print("🚨 Error inserting row:", row)
+            print(e)
+            continue
 
-    conn.commit()
-    cursor.close()
-    conn.close()
-    print("✅ Ingestion complete.")
+# === Main Ingestion Function ===
+def main():
+    try:
+        sftp = connect_sftp()
+        folders = sftp.listdir("57130")
+        print("📁 Available date folders:", folders)
 
-    send_alert("✅ Toast ingestion succeeded.")
+        if not folders:
+            print("❌ No folders found.")
+            return
 
-except Exception as e:
-    print("❌ Ingestion failed:", e)
-    send_alert(f"❌ Ingestion failed: {e}")
+        latest_folder = sorted(folders)[-1]
+        filepath = f"/57130/{latest_folder}/AllItemsReport.csv"
+        print("📥 Loading file:", filepath)
+
+        file_stream = sftp.file(filepath, mode='r')
+        conn = connect_db()
+        cursor = conn.cursor()
+
+        process_csv(file_stream, cursor)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        sftp.close()
+
+        print("✅ Ingestion complete")
+        send_alert("✅ Toast ingestion complete.")
+    except Exception as e:
+        print("❌ Ingestion failed:", str(e))
+        send_alert(f"❌ Ingestion failed: {str(e)}")
+
+if __name__ == "__main__":
+    main()
