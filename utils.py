@@ -1,3 +1,6 @@
+# WARNING: This module assumes data was previously downloaded to toast_exports/
+# Only usable during local development or if `signalfetch.py` was executed.
+
 import os
 import pandas as pd
 import json
