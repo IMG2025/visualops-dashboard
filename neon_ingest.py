@@ -54,21 +54,27 @@ def main():
         if not header:
             raise Exception("CSV header not found.")
 
-        print(f"🧾 Header: {header}")
+        print(f"🧾 Header ({len(header)} columns): {header}")
 
         # === Ingest into Neon
         cursor.execute("TRUNCATE TABLE toast_raw_data;")
-        for row in reader:
+
+        inserted = 0
+        for idx, row in enumerate(reader, start=2):  # Start at 2 to account for header
             if len(row) != len(header):
-                print(f"⚠️ Skipped row with incorrect column count: {row}")
+                print(f"⚠️ Row {idx} skipped - column mismatch ({len(row)} vs {len(header)}): {row}")
                 continue
-            cursor.execute(
-                f"INSERT INTO toast_raw_data ({', '.join(header)}) VALUES ({', '.join(['%s'] * len(row))})",
-                row
-            )
+            try:
+                cursor.execute(
+                    f"INSERT INTO toast_raw_data ({', '.join(header)}) VALUES ({', '.join(['%s'] * len(row))})",
+                    row
+                )
+                inserted += 1
+            except Exception as e:
+                print(f"❌ Failed to insert row {idx}: {row}\nReason: {e}")
 
         conn.commit()
-        print("✅ Ingestion complete.")
+        print(f"✅ Ingested {inserted} rows.")
         send_alert("neon_ingest.py", csv_file, "Success")
 
     except Exception as e:
