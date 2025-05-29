@@ -1,10 +1,5 @@
 # Ingest Toast CSV into Neon
 
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 * * * *'  # hourly
-
 jobs:
   ingest:
     runs-on: ubuntu-latest
@@ -16,6 +11,8 @@ jobs:
       TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
       TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
       TOAST_SFTP_PRIVATE_KEY_B64: ${{ secrets.TOAST_SFTP_PRIVATE_KEY_B64 }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
       - name: Checkout repo
@@ -26,8 +23,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install paramiko psycopg2-binary
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
 
-      - name: Run Neon ingestion
+      - name: Run ingestion
         run: python neon_ingest.py
