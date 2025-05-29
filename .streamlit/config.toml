@@ -1,0 +1,9 @@
+# .streamlit/config.toml
+
+[server]
+headless = true
+port = 8501
+enableCORS = false
+
+[general]
+scriptName = "dashboard.py"  # This tells Streamlit which file to run
