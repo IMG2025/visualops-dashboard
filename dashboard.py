@@ -5,6 +5,11 @@ from psycopg2 import OperationalError
 import pandas as pd
 import traceback
 
+# Debug: Confirm environment is accessible
+st.write("🔧 Environment Check")
+for key in ["NEON_HOST", "NEON_DB", "NEON_USER", "NEON_PASSWORD"]:
+    st.write(f"{key}: {os.environ.get(key)}")
+    
 st.write("🔍 Debug: Starting app...")
 try:
     for var in required_env_vars:
