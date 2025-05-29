@@ -1,49 +1,72 @@
 import streamlit as st
 import os
 import psycopg2
-import pandas as pd
 from psycopg2 import OperationalError
+import time
 
-st.set_page_config(page_title="CoreIdentity Dashboard", layout="wide")
-st.title("🧪 VisualOps Diagnostic")
+st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
+st.title("📊 VisualOps Dashboard")
 
-# === Stage 1: Sanity Check ===
-st.info("✅ dashboard.py is loading...")
-st.code("📂 Running file: dashboard.py")
+print("✅ Streamlit UI initialized")
 
-# === Stage 2: Environment Variables ===
+# === 1. Check secrets ===
 required_vars = ["NEON_HOST", "NEON_DB", "NEON_USER", "NEON_PASSWORD"]
-missing = [v for v in required_vars if not os.getenv(v)]
+missing = [var for var in required_vars if not os.environ.get(var)]
+
 if missing:
-    st.error(f"❌ Missing secrets: {', '.join(missing)}")
+    st.error(f"❌ Missing required secrets: {', '.join(missing)}")
+    print("❌ Missing secrets:", missing)
     st.stop()
 
-st.success("✅ All secrets loaded.")
+st.success("✅ All required environment variables present.")
+print("✅ Environment variables loaded")
 
-# === Stage 3: Connect to Neon ===
+# === 2. Log variables for debug ===
+with st.expander("🔧 Debug: Secrets"):
+    for var in required_vars:
+        st.write(f"{var}: {os.environ.get(var)}")
+print("✅ Secrets rendered in expander")
+
+# === 3. Try DB connection ===
+host = os.environ["NEON_HOST"]
+dbname = os.environ["NEON_DB"]
+user = os.environ["NEON_USER"]
+password = os.environ["NEON_PASSWORD"]
+
+st.info("🔌 Attempting to connect to Neon...")
+print("🔌 Connecting to Neon with:", host, dbname, user)
+
+conn = None
 try:
-    st.write("🔌 Connecting to Neon...")
     conn = psycopg2.connect(
-        host=os.environ["NEON_HOST"],
-        dbname=os.environ["NEON_DB"],
-        user=os.environ["NEON_USER"],
-        password=os.environ["NEON_PASSWORD"],
+        host=host,
+        dbname=dbname,
+        user=user,
+        password=password,
         connect_timeout=5
     )
-    st.success("✅ Connection successful.")
+    st.success("✅ Connected to Neon.")
+    print("✅ Neon DB connection successful.")
 except OperationalError as e:
-    st.error(f"❌ Connection failed: {e}")
+    st.error(f"❌ DB connection failed: {e}")
+    print("❌ DB connection failed:", str(e))
     st.stop()
 
-# === Stage 4: Test Query ===
+# === 4. Run a basic query ===
 try:
-    st.write("🔍 Running test query...")
     cur = conn.cursor()
-    cur.execute("SELECT NOW();")
-    now = cur.fetchone()[0]
-    st.success(f"🕒 Database time: {now}")
+    cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+    tables = cur.fetchall()
     cur.close()
-except Exception as e:
-    st.error(f"❌ Query error: {e}")
-finally:
     conn.close()
+
+    if tables:
+        st.subheader("📂 Tables in Neon Database")
+        st.write([t[0] for t in tables])
+        print("✅ Tables retrieved:", [t[0] for t in tables])
+    else:
+        st.warning("⚠️ No tables found.")
+        print("⚠️ No tables found in public schema.")
+except Exception as e:
+    st.error(f"❌ Query failed: {e}")
+    print("❌ Query failed:", str(e))
