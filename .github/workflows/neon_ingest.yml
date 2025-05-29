@@ -1,4 +1,9 @@
-# Ingest Toast CSV into Neon
+name: Ingest Toast CSV into Neon
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'  # Runs daily at 3 AM UTC
 
 jobs:
   ingest:
