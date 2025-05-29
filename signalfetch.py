@@ -1,19 +1,13 @@
 import os
 import paramiko
-from dotenv import load_dotenv
+from io import StringIO
 from datetime import datetime, timedelta
 
-# Load environment variables
-load_dotenv()
-
-# SFTP credentials (from GitHub secrets or .env)
+# Load credentials from environment
 SFTP_HOST = os.getenv("TOAST_SFTP_HOST")
 SFTP_USER = os.getenv("TOAST_SFTP_USERNAME")
+SFTP_KEY_B64 = os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")
 
-# Use standard GitHub Actions private key path
-PRIVATE_KEY_PATH = os.path.expanduser("~/.ssh/id_rsa")
-
-# Constants
 LOCATIONS = ["57130", "57138"]
 EXPORT_PATH = "toast_exports"
 
@@ -32,15 +26,15 @@ TOAST_EXPORTS = [
     "AccountingReport.xls"
 ]
 
-def last_n_dates(n=30):
+def last_n_dates(n=7):  # Use 7 for GitHub job timeout safety
     today = datetime.utcnow()
     return [(today - timedelta(days=i)).strftime('%Y%m%d') for i in range(n)]
 
 def fetch_exports():
     try:
-        key = paramiko.RSAKey.from_private_key_file(PRIVATE_KEY_PATH)
+        private_key_str = paramiko.RSAKey.from_private_key(StringIO(SFTP_KEY_B64))
         transport = paramiko.Transport((SFTP_HOST, 22))
-        transport.connect(username=SFTP_USER, pkey=key)
+        transport.connect(username=SFTP_USER, pkey=private_key_str)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
         for location in LOCATIONS:
@@ -57,7 +51,6 @@ def fetch_exports():
                     print(f"❌ Folder not found: {remote_base}")
                     continue
 
-                print(f"📦 Fetching files from: {remote_base}")
                 for filename in TOAST_EXPORTS:
                     remote_file = f"{remote_base}/{filename}"
                     local_file = os.path.join(local_dir, filename)
@@ -67,8 +60,8 @@ def fetch_exports():
                         continue
 
                     try:
-                        with sftp.open(remote_file, 'r') as remote_file_obj:
-                            contents = remote_file_obj.read()
+                        with sftp.open(remote_file, 'r') as rf:
+                            contents = rf.read()
                             if contents:
                                 with open(local_file, 'wb') as f:
                                     f.write(contents)
@@ -76,14 +69,14 @@ def fetch_exports():
                             else:
                                 print(f"⚠️  Skipped empty: {filename}")
                     except Exception as e:
-                        print(f"⚠️  Missing or error: {filename} ({e})")
+                        print(f"⚠️  Error reading {filename}: {e}")
 
         sftp.close()
         transport.close()
-        print("\n🚀 Fetch complete for all available folders.")
+        print("\n🚀 Fetch complete.")
 
     except Exception as e:
-        print(f"❌ SFTP connection failed: {e}")
+        print(f"❌ SFTP fetch failed: {e}")
 
 if __name__ == "__main__":
     fetch_exports()
