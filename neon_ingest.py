@@ -33,10 +33,10 @@ def main():
         # === Choose location (e.g., 57130)
         location_id = "57130"
         sftp.chdir(f"/{location_id}")
-        folders = sftp.listdir()
+        folders = sorted(sftp.listdir(), reverse=True)
         print("📁 Available date folders:", folders)
 
-        latest_date_folder = sorted(folders, reverse=True)[0]
+        latest_date_folder = folders[0]
         sftp.chdir(f"/{location_id}/{latest_date_folder}")
 
         # === Choose CSV file to ingest
@@ -44,14 +44,24 @@ def main():
         print(f"📥 Loading file: /{location_id}/{latest_date_folder}/{csv_file}")
 
         with sftp.open(csv_file) as f:
-            content = f.read().decode()
+            raw = f.read().decode().strip()
 
-        reader = csv.reader(StringIO(content))
-        header = next(reader)
+        if not raw:
+            raise Exception("CSV file is empty.")
+
+        reader = csv.reader(StringIO(raw))
+        header = next(reader, None)
+        if not header:
+            raise Exception("CSV header not found.")
+
+        print(f"🧾 Header: {header}")
 
         # === Ingest into Neon
         cursor.execute("TRUNCATE TABLE toast_raw_data;")
         for row in reader:
+            if len(row) != len(header):
+                print(f"⚠️ Skipped row with incorrect column count: {row}")
+                continue
             cursor.execute(
                 f"INSERT INTO toast_raw_data ({', '.join(header)}) VALUES ({', '.join(['%s'] * len(row))})",
                 row
