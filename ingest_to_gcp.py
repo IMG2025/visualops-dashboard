@@ -5,7 +5,7 @@ import requests
 from io import StringIO
 from datetime import datetime
 
-# Use DATABASE_URL from environment variable
+# === Environment Setup ===
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("❌ DATABASE_URL is not set. Check your GitHub Secrets or .env file.")
@@ -26,6 +26,7 @@ TABLES = [
 ]
 SCHEMA = "visualops"
 
+# === Download CSV from GitHub ===
 def fetch_csv(location_id, date, table_name):
     url = f"{BASE_URL}/{location_id}/{date}/{table_name}.csv"
     try:
@@ -41,6 +42,7 @@ def fetch_csv(location_id, date, table_name):
         print(f"[WARN] Could not load {url}: {e}")
         return None
 
+# === Insert into PostgreSQL (Cloud SQL) ===
 def insert_into_neon(df, table_name, conn):
     cursor = conn.cursor()
     try:
@@ -62,6 +64,7 @@ def insert_into_neon(df, table_name, conn):
     finally:
         cursor.close()
 
+# === Main Flow ===
 def main():
     print("✅ Connecting to database...")
     conn = psycopg2.connect(DATABASE_URL)
