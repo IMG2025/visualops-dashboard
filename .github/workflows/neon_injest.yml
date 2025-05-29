@@ -1,57 +1,33 @@
-import os
-import base64
-import paramiko
-import psycopg2
-import csv
-from io import StringIO
+Ingest Toast CSV into Neon
 
-# === Setup Neon DB connection ===
-db_conn = psycopg2.connect(
-    host=os.getenv("NEON_HOST"),
-    database=os.getenv("NEON_DB"),
-    user=os.getenv("NEON_USER"),
-    password=os.getenv("NEON_PASSWORD"),
-    port=5432
-)
-cursor = db_conn.cursor()
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'  # hourly
 
-# === Load and decode private key ===
-private_key_str = base64.b64decode(os.getenv("TOAST_SFTP_PRIVATE_KEY_B64")).decode()
-private_key = paramiko.RSAKey.from_private_key(StringIO(private_key_str))
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      NEON_HOST: ${{ secrets.NEON_HOST }}
+      NEON_DB: ${{ secrets.NEON_DB }}
+      NEON_USER: ${{ secrets.NEON_USER }}
+      NEON_PASSWORD: ${{ secrets.NEON_PASSWORD }}
+      TOAST_SFTP_HOST: ${{ secrets.TOAST_SFTP_HOST }}
+      TOAST_SFTP_USERNAME: ${{ secrets.TOAST_SFTP_USERNAME }}
+      TOAST_SFTP_PRIVATE_KEY_B64: ${{ secrets.TOAST_SFTP_PRIVATE_KEY_B64 }}
 
-# === Connect to SFTP ===
-sftp_host = os.getenv("TOAST_SFTP_HOST")
-sftp_user = os.getenv("TOAST_SFTP_USERNAME")
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-transport = paramiko.Transport((sftp_host, 22))
-transport.connect(username=sftp_user, pkey=private_key)
-sftp = paramiko.SFTPClient.from_transport(transport)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-# === Fetch latest CSV file ===
-files = sorted(sftp.listdir_attr(), key=lambda f: f.st_mtime, reverse=True)
-latest_csv = next((f.filename for f in files if f.filename.endswith(".csv")), None)
+      - name: Install dependencies
+        run: pip install paramiko psycopg2-binary
 
-if not latest_csv:
-    raise Exception("No CSV file found on SFTP server.")
-
-with sftp.open(latest_csv) as f:
-    content = f.read().decode()
-
-reader = csv.reader(StringIO(content))
-header = next(reader)
-
-# === Insert into Neon DB ===
-cursor.execute("TRUNCATE TABLE toast_raw_data;")
-for row in reader:
-    cursor.execute(
-        f"INSERT INTO toast_raw_data ({', '.join(header)}) VALUES ({', '.join(['%s'] * len(row))})",
-        row
-    )
-
-db_conn.commit()
-cursor.close()
-db_conn.close()
-sftp.close()
-transport.close()
-
-print("✅ Ingestion complete.")
+      - name: Run Neon ingestion
+        run: python neon_ingest.py
