@@ -4,33 +4,32 @@ import psycopg2
 from psycopg2 import OperationalError
 import pandas as pd
 
+print("✅ dashboard.py: beginning execution")
+
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
 st.title("📊 VisualOps Dashboard")
+st.info("✅ Streamlit is rendering this line.")  # Confirm UI is alive
 
-# === Diagnostic Check ===
-st.info("✅ `dashboard.py` loaded and executing...")
-
-# === 1. Check Secrets ===
+# === 1. Check for required secrets ===
 required_vars = ["NEON_HOST", "NEON_DB", "NEON_USER", "NEON_PASSWORD"]
 missing = [var for var in required_vars if var not in os.environ or not os.environ[var]]
 
 if missing:
-    st.error(f"❌ Missing secrets: {', '.join(missing)}")
+    st.error(f"❌ Missing required environment variables: {', '.join(missing)}")
     st.stop()
 
-# === 2. Debug output ===
-with st.expander("🔐 Environment Variables"):
+# === 2. Print all secrets for confirmation in the expander ===
+with st.expander("🔧 Debug: Loaded Environment Variables"):
     for var in required_vars:
-        masked = os.environ[var] if "PASS" not in var else "********"
-        st.write(f"{var}: {masked}")
+        st.write(f"{var}: {os.environ.get(var)}")
 
-# === 3. Extract creds ===
+# === 3. Extract connection info ===
 host = os.environ["NEON_HOST"]
 dbname = os.environ["NEON_DB"]
 user = os.environ["NEON_USER"]
 password = os.environ["NEON_PASSWORD"]
 
-# === 4. Attempt DB Connection ===
+# === 4. Connect to the database ===
 conn = None
 with st.spinner("🔌 Connecting to Neon..."):
     try:
@@ -43,24 +42,24 @@ with st.spinner("🔌 Connecting to Neon..."):
         )
         st.success("✅ Connected to Neon.")
     except OperationalError as e:
-        st.error(f"❌ Connection failed: {e}")
+        st.error(f"❌ Could not connect to Neon: {e}")
         st.stop()
 
-# === 5. Verify Data Access ===
+# === 5. Run a test query ===
 try:
     cur = conn.cursor()
     cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
     tables = cur.fetchall()
+    cur.close()
 
     if tables:
-        st.subheader("📂 Tables in Database")
+        st.subheader("📂 Tables in your Neon Database")
         st.write([t[0] for t in tables])
     else:
-        st.warning("⚠️ No tables found.")
-
-    cur.close()
+        st.warning("⚠️ No tables found in the public schema.")
 except Exception as e:
-    st.error(f"❌ Query failed: {e}")
+    st.error(f"❌ Failed to run test query: {e}")
 finally:
     if conn:
         conn.close()
+        print("✅ Closed Neon connection.")
