@@ -1,93 +1,43 @@
 import streamlit as st
-import requests
+import psycopg2
 import os
+import pandas as pd
 
-st.set_page_config(page_title="CoreIdentity Dashboard", layout="wide")
+# --- Neon Connection ---
+NEON_DB = os.getenv("NEON_DB")
+NEON_USER = os.getenv("NEON_USER")
+NEON_PASSWORD = os.getenv("NEON_PASSWORD")
+NEON_HOST = os.getenv("NEON_HOST")
 
-API_BASE = os.getenv("API_BASE_URL", "http://localhost:5000")
+def get_connection():
+    return psycopg2.connect(
+        dbname=NEON_DB,
+        user=NEON_USER,
+        password=NEON_PASSWORD,
+        host=NEON_HOST,
+        port=5432
+    )
 
-st.title("🧠 CoreIdentity Agent Dashboard")
+# --- Streamlit Config ---
+st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
+st.title("📊 VisualOps Dashboard (Neon Powered)")
 
-# --- PULSE ---
-st.header("Pulse Agent")
-if st.button("Ping Pulse Agent"):
-    try:
-        res = requests.get(f"{API_BASE}/ping")
-        st.json(res.json())
-    except Exception as e:
-        st.error(f"Error pinging Pulse Agent: {e}")
+# --- Query Event Logs ---
+def load_event_logs():
+    query = """
+        SELECT id, location, event_type, details, date
+        FROM public.event_logs
+        ORDER BY date DESC
+        LIMIT 50;
+    """
+    with get_connection() as conn:
+        df = pd.read_sql_query(query, conn)
+    return df
 
-if st.button("Get Pulse Logs"):
-    try:
-        res = requests.get(f"{API_BASE}/logs/pulse")
-        st.json(res.json())
-    except Exception as e:
-        st.error(f"Error getting Pulse logs: {e}")
-
-# --- DEPLOYR ---
-st.header("Deployr Agent")
-deploy_service = st.text_input("Enter service to deploy")
-if st.button("Trigger Deploy") and deploy_service:
-    try:
-        res = requests.get(f"{API_BASE}/deployr/{deploy_service}")
-        st.json(res.json())
-    except Exception as e:
-        st.error(f"Deployr Error: {e}")
-
-# --- SUPPLIER ---
-st.header("Supplier Agent")
-supplier_name = st.text_input("Enter supplier to sync")
-if st.button("Sync Supplier") and supplier_name:
-    try:
-        res = requests.get(f"{API_BASE}/supplier/{supplier_name}")
-        st.json(res.json())
-    except Exception as e:
-        st.error(f"Supplier Error: {e}")
-
-# --- VIA ---
-st.header("VIA Agent")
-user_id = st.text_input("Track VIA session for user:")
-if st.button("Track VIA Session") and user_id:
-    try:
-        res = requests.get(f"{API_BASE}/via/{user_id}")
-        st.json(res.json())
-    except Exception as e:
-        st.error(f"VIA Error: {e}")
-
-# --- ECHO ---
-st.header("Echo Agent")
-action = st.text_input("Log user action:")
-if st.button("Log Echo Action") and action:
-    try:
-        res = requests.get(f"{API_BASE}/echo/{action}")
-        st.json(res.json())
-    except Exception as e:
-        st.error(f"Echo Error: {e}")
-
-# --- SIGNAL ---
-st.header("Signal Agent")
-violation = st.text_input("Report violation detail:")
-if st.button("Trigger Violation") and violation:
-    try:
-        res = requests.get(f"{API_BASE}/signal/{violation}")
-        st.json(res.json())
-    except Exception as e:
-        st.error(f"Signal Error: {e}")
-
-# --- MCP ---
-st.header("MCP Intercept")
-src = st.text_input("Source")
-tgt = st.text_input("Target")
-msg = st.text_area("Message Payload (JSON)")
-
-if st.button("Send Intercept") and src and tgt and msg:
-    try:
-        payload = {
-            "source": src,
-            "target": tgt,
-            "message": json.loads(msg)
-        }
-        res = requests.post(f"{API_BASE}/mcp/intercept", json=payload)
-        st.json(res.json())
-    except Exception as e:
-        st.error(f"MCP Intercept Error: {e}")
+# --- UI Section ---
+try:
+    st.subheader("🧠 Recent Event Logs")
+    df_logs = load_event_logs()
+    st.dataframe(df_logs, use_container_width=True)
+except Exception as e:
+    st.error(f"❌ Failed to load event logs: {e}")
