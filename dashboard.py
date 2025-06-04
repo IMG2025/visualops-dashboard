@@ -3,48 +3,48 @@ import psycopg2
 import pandas as pd
 import os
 
-# Streamlit UI setup
 st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
-st.title("📊 VisualOps Dashboard")
+st.title("📊 VisualOps Event Log Dashboard")
 
-# Neon connection using Streamlit secrets
-NEON_HOST = os.getenv("NEON_HOST")
-NEON_DB = os.getenv("NEON_DB")
-NEON_USER = os.getenv("NEON_USER")
-NEON_PASSWORD = os.getenv("NEON_PASSWORD")
+# Load Neon DB credentials from Streamlit secrets or env
+DB_SETTINGS = {
+    "host": os.getenv("NEON_HOST", st.secrets.get("NEON_HOST")),
+    "dbname": os.getenv("NEON_DB", st.secrets.get("NEON_DB")),
+    "user": os.getenv("NEON_USER", st.secrets.get("NEON_USER")),
+    "password": os.getenv("NEON_PASSWORD", st.secrets.get("NEON_PASSWORD")),
+    "port": 5432
+}
 
-# Validate required environment variables
-if not all([NEON_HOST, NEON_DB, NEON_USER, NEON_PASSWORD]):
-    st.error("❌ Missing Neon connection credentials.")
-    st.stop()
-
-# Connection string
-conn_str = f"host={NEON_HOST} dbname={NEON_DB} user={NEON_USER} password={NEON_PASSWORD} sslmode=require"
-
-# Query wrapper
-def fetch_event_logs(limit=20):
+# Connect to Neon
+@st.cache_resource(show_spinner=False)
+def get_conn():
     try:
-        with psycopg2.connect(conn_str) as conn:
-            query = f"SELECT * FROM public.event_logs ORDER BY date DESC LIMIT {limit}"
-            df = pd.read_sql(query, conn)
-            return df
+        conn = psycopg2.connect(**DB_SETTINGS)
+        return conn
     except Exception as e:
-        st.error(f"❌ DB Query Failed: {e}")
+        st.error(f"❌ Failed to connect to Neon: {e}")
+        return None
+
+# Load recent logs from event_logs
+@st.cache_data(ttl=60)
+def load_logs():
+    conn = get_conn()
+    if conn is None:
+        return pd.DataFrame()
+    try:
+        return pd.read_sql("SELECT * FROM public.event_logs ORDER BY date DESC LIMIT 100", conn)
+    except Exception as e:
+        st.error(f"❌ Query failed: {e}")
         return pd.DataFrame()
 
-# --- UI Layout ---
-tabs = st.tabs(["📋 Recent Logs", "⚙️ System Status"])
+# Display logs
+df = load_logs()
+if not df.empty:
+    st.subheader("🧠 Recent Event Logs")
+    st.dataframe(df, use_container_width=True)
+else:
+    st.warning("No logs found or failed to load from Neon.")
 
-with tabs[0]:
-    st.subheader("Latest Ingested Event Logs")
-    logs_df = fetch_event_logs()
-    if logs_df.empty:
-        st.warning("No logs found or failed to connect.")
-    else:
-        st.dataframe(logs_df, use_container_width=True)
-
-with tabs[1]:
-    st.subheader("Status")
-    st.markdown("- ✅ Connected to Neon")
-    st.markdown("- ✅ Dashboard Live")
-    st.markdown("- 🔁 Data ingested via GitHub Actions")
+# Diagnostic block
+with st.expander("🔍 Connection Debug Info"):
+    st.json(DB_SETTINGS)
