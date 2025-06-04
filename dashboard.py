@@ -1,150 +1,93 @@
 import streamlit as st
-import pandas as pd
+import requests
 import os
-import json
 
-st.set_page_config(page_title="VisualOps Dashboard", layout="wide")
-st.title("📊 VisualOps: Multi-Location Toast Dashboard")
+st.set_page_config(page_title="CoreIdentity Dashboard", layout="wide")
 
-# --- Utility Loaders ---
-def load_csv(filepath):
+API_BASE = os.getenv("API_BASE_URL", "http://localhost:5000")
+
+st.title("🧠 CoreIdentity Agent Dashboard")
+
+# --- PULSE ---
+st.header("Pulse Agent")
+if st.button("Ping Pulse Agent"):
     try:
-        df = pd.read_csv(filepath)
-        if df.empty or len(df.columns) == 0:
-            raise ValueError("Empty or malformed CSV")
-        return df
+        res = requests.get(f"{API_BASE}/ping")
+        st.json(res.json())
     except Exception as e:
-        st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
-        return None
+        st.error(f"Error pinging Pulse Agent: {e}")
 
-def load_json(filepath):
+if st.button("Get Pulse Logs"):
     try:
-        with open(filepath, "r") as f:
-            return json.load(f)
+        res = requests.get(f"{API_BASE}/logs/pulse")
+        st.json(res.json())
     except Exception as e:
-        st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
-        return None
+        st.error(f"Error getting Pulse logs: {e}")
 
-def load_excel(filepath):
+# --- DEPLOYR ---
+st.header("Deployr Agent")
+deploy_service = st.text_input("Enter service to deploy")
+if st.button("Trigger Deploy") and deploy_service:
     try:
-        return pd.read_excel(filepath, engine="openpyxl")
+        res = requests.get(f"{API_BASE}/deployr/{deploy_service}")
+        st.json(res.json())
     except Exception as e:
-        st.warning(f"⚠️ Could not load {os.path.basename(filepath)}: {e}")
-        return None
+        st.error(f"Deployr Error: {e}")
 
-# --- Location & Date Picker ---
-locations = ["57130", "57138"]
-location_id = st.selectbox("📍 Select Location", options=locations)
-base_path = f"toast_exports/{location_id}"
+# --- SUPPLIER ---
+st.header("Supplier Agent")
+supplier_name = st.text_input("Enter supplier to sync")
+if st.button("Sync Supplier") and supplier_name:
+    try:
+        res = requests.get(f"{API_BASE}/supplier/{supplier_name}")
+        st.json(res.json())
+    except Exception as e:
+        st.error(f"Supplier Error: {e}")
 
-if not os.path.exists(base_path):
-    st.error(f"❌ No data found for location {location_id}.")
-    st.stop()
+# --- VIA ---
+st.header("VIA Agent")
+user_id = st.text_input("Track VIA session for user:")
+if st.button("Track VIA Session") and user_id:
+    try:
+        res = requests.get(f"{API_BASE}/via/{user_id}")
+        st.json(res.json())
+    except Exception as e:
+        st.error(f"VIA Error: {e}")
 
-available_dates = sorted([d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))])
-if not available_dates:
-    st.error("❌ No dates found for selected location.")
-    st.stop()
+# --- ECHO ---
+st.header("Echo Agent")
+action = st.text_input("Log user action:")
+if st.button("Log Echo Action") and action:
+    try:
+        res = requests.get(f"{API_BASE}/echo/{action}")
+        st.json(res.json())
+    except Exception as e:
+        st.error(f"Echo Error: {e}")
 
-selected_date = st.selectbox("📅 Select Date", options=available_dates)
-data_path = f"{base_path}/{selected_date}"
-st.markdown(f"**Data Path:** `{data_path}`")
+# --- SIGNAL ---
+st.header("Signal Agent")
+violation = st.text_input("Report violation detail:")
+if st.button("Trigger Violation") and violation:
+    try:
+        res = requests.get(f"{API_BASE}/signal/{violation}")
+        st.json(res.json())
+    except Exception as e:
+        st.error(f"Signal Error: {e}")
 
-try:
-    files_found = os.listdir(data_path)
-    st.markdown("📁 **Files Found:**")
-    st.code(files_found)
-except Exception as e:
-    st.error(f"❌ Failed to list files: {e}")
-    st.stop()
+# --- MCP ---
+st.header("MCP Intercept")
+src = st.text_input("Source")
+tgt = st.text_input("Target")
+msg = st.text_area("Message Payload (JSON)")
 
-# --- Top Menu Items ---
-item_df = load_csv(os.path.join(data_path, "ItemSelectionDetails.csv"))
-if item_df is not None and all(col in item_df.columns for col in ["Menu Item", "Qty", "Net Price"]):
-    top_items = item_df.groupby("Menu Item").agg({
-        "Qty": "sum",
-        "Net Price": "sum"
-    }).reset_index().rename(columns={"Qty": "Quantity Sold", "Net Price": "Total Sales"})
-    top_items = top_items.sort_values("Quantity Sold", ascending=False)
-    st.subheader("🍽️ Top Menu Items")
-    st.dataframe(top_items)
-
-# --- Sales Summary ---
-check_df = load_csv(os.path.join(data_path, "CheckDetails.csv"))
-if check_df is not None:
-    st.subheader("💰 Sales Summary (from CheckDetails)")
-    st.metric("Total Sales", f"${check_df['Total'].sum():,.2f}" if "Total" in check_df.columns else "N/A")
-    st.metric("Total Tax", f"${check_df['Tax'].sum():,.2f}" if "Tax" in check_df.columns else "N/A")
-    st.metric("Total Discount", f"${check_df['Discount'].sum():,.2f}" if "Discount" in check_df.columns else "N/A")
-
-# --- Tender Breakdown ---
-order_df = load_csv(os.path.join(data_path, "OrderDetails.csv"))
-if order_df is not None:
-    if "Tender" not in order_df.columns:
-        st.error("🔴 Missing critical column 'Tender' in OrderDetails.csv")
-    else:
-        tender_summary = order_df["Tender"].value_counts().reset_index()
-        tender_summary.columns = ["Tender Type", "Count"]
-        st.subheader("📦 Order Tenders Summary")
-        st.dataframe(tender_summary)
-
-# --- Labor Summary ---
-labor_df = load_csv(os.path.join(data_path, "TimeEntries.csv"))
-if labor_df is not None and all(col in labor_df.columns for col in ["Job Title", "Payable Hours", "Total Pay"]):
-    st.subheader("👥 Labor Summary")
-    labor_summary = labor_df.groupby("Job Title").agg({
-        "Payable Hours": "sum",
-        "Total Pay": "sum"
-    }).reset_index()
-    st.dataframe(labor_summary)
-
-# --- Accounting Summary ---
-account_df = load_excel(os.path.join(data_path, "AccountingReport.xls"))
-if account_df is not None:
-    st.subheader("📒 Accounting Summary")
-    st.dataframe(account_df)
-
-# --- Modifiers Summary ---
-mod_df = load_csv(os.path.join(data_path, "ModifiersSelectionDetails.csv"))
-if mod_df is not None and "Modifier Name" in mod_df.columns:
-    st.subheader("🧩 Top Modifiers")
-    modifier_summary = mod_df["Modifier Name"].value_counts().reset_index()
-    modifier_summary.columns = ["Modifier", "Count"]
-    st.dataframe(modifier_summary)
-
-# --- All Items Summary ---
-all_items_df = load_csv(os.path.join(data_path, "AllItemsReport.csv"))
-if all_items_df is not None:
-    st.subheader("📦 All Items Report")
-    st.dataframe(all_items_df)
-
-# --- Kitchen Timings ---
-kitchen_df = load_csv(os.path.join(data_path, "KitchenTimings.csv"))
-if kitchen_df is not None:
-    st.subheader("⏱️ Kitchen Timing Metrics")
-    st.dataframe(kitchen_df)
-
-# --- Menu Export JSON (v1) ---
-menu_v1 = load_json(os.path.join(data_path, "MenuExport.json"))
-if menu_v1 is not None:
-    st.subheader("📋 Menu Export (v1)")
-    if "menuGroups" in menu_v1:
-        menu_items = []
-        for group in menu_v1["menuGroups"]:
-            for item in group.get("menuItems", []):
-                menu_items.append({
-                    "Group": group.get("name"),
-                    "Item": item.get("name"),
-                    "Price": item.get("basePrice")
-                })
-        if menu_items:
-            st.dataframe(pd.DataFrame(menu_items))
-
-# --- Menu Export JSON (v2) ---
-menu_v2 = load_json(os.path.join(data_path, "MenuExportV2.json"))
-if menu_v2 is not None:
-    st.subheader("📋 Menu Export (v2)")
-    if "menuItems" in menu_v2:
-        menu_v2_df = pd.DataFrame(menu_v2["menuItems"])
-        if not menu_v2_df.empty:
-            st.dataframe(menu_v2_df)
+if st.button("Send Intercept") and src and tgt and msg:
+    try:
+        payload = {
+            "source": src,
+            "target": tgt,
+            "message": json.loads(msg)
+        }
+        res = requests.post(f"{API_BASE}/mcp/intercept", json=payload)
+        st.json(res.json())
+    except Exception as e:
+        st.error(f"MCP Intercept Error: {e}")
